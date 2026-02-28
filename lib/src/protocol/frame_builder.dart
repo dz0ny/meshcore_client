@@ -109,6 +109,27 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build SendRawData command — direct-route binary payload (no base64, no text encoding).
+  ///
+  /// [path] is the contact's [outPath], [pathLen] is [outPathLen].
+  /// [payload] is the raw binary data to send (max ~161 bytes to stay within
+  /// the MeshCore MAX_FRAME_SIZE = 172 byte limit).
+  ///
+  /// Note: flood routing is NOT supported by the firmware for raw data.
+  /// This only works with contacts that have a known direct path (outPathLen >= 0).
+  static Uint8List buildSendRawData({
+    required int pathLen,
+    required Uint8List path,
+    required Uint8List payload,
+  }) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSendRawData); // 25
+    writer.writeInt8(pathLen); // signed, must be >= 0
+    writer.writeBytes(path.sublist(0, pathLen.clamp(0, path.length)));
+    writer.writeBytes(payload);
+    return writer.toBytes();
+  }
+
   /// Build SendBinaryReq command
   static Uint8List buildSendBinaryReq({
     required Uint8List contactPublicKey,

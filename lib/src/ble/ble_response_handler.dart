@@ -58,6 +58,8 @@ typedef OnChannelInfoCallback =
     );
 typedef OnMessageEchoDetectedCallback =
     void Function(String messageId, int echoCount, int snrRaw, int rssiDbm);
+typedef OnRawDataReceivedCallback =
+    void Function(Uint8List payload, int snrRaw, int rssiDbm);
 
 /// Processes incoming responses from the BLE device
 class BleResponseHandler {
@@ -97,6 +99,7 @@ class BleResponseHandler {
   OnContactNotFoundCallback? onContactNotFound;
   OnChannelInfoCallback? onChannelInfoReceived;
   OnMessageEchoDetectedCallback? onMessageEchoDetected;
+  OnRawDataReceivedCallback? onRawDataReceived;
   VoidCallback? onRxActivity;
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
@@ -264,6 +267,10 @@ class BleResponseHandler {
         case MeshCoreConstants.pushPathDiscoveryResponse:
           debugPrint('  → Path discovery response (not yet handled)');
           break;
+        case MeshCoreConstants.pushRawData:
+          debugPrint('  → Handling RawData push');
+          _handleRawData(reader);
+          break;
         case MeshCoreConstants.pushControlData:
           debugPrint('  → Control data push (not yet handled)');
           break;
@@ -294,6 +301,18 @@ class BleResponseHandler {
       debugPrint('  Stack trace: $stackTrace');
       onError?.call('Data parsing error: $e');
     }
+  }
+
+  /// Handle RawData push (pushRawData = 0x84)
+  /// Format: [snr:int8][rssi:int8][0xFF reserved][raw_payload...]
+  void _handleRawData(BufferReader reader) {
+    if (reader.remainingBytesCount < 3) return;
+    final snrRaw = reader.readInt8();
+    final rssiDbm = reader.readInt8();
+    reader.readByte(); // reserved (0xFF)
+    final payload = reader.readRemainingBytes();
+    debugPrint('  📡 [RawData] ${payload.length} bytes, SNR=$snrRaw, RSSI=$rssiDbm');
+    onRawDataReceived?.call(payload, snrRaw, rssiDbm);
   }
 
   /// Handle ContactsStart response

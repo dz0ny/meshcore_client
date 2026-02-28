@@ -130,6 +130,10 @@ class Message {
   final bool isDrawing; // Whether this message contains a map drawing
   final String? drawingId; // ID of the associated drawing (for navigation)
 
+  // Voice message tracking
+  final bool isVoice; // Whether this is a voice message
+  final String? voiceId; // Session ID for multi-packet reassembly
+
   // Message grouping for bulk sends (same message to multiple recipients)
   final String? groupId; // Shared ID for messages in the same bulk send
   final List<MessageRecipient>?
@@ -167,6 +171,8 @@ class Message {
     this.drawingId,
     this.groupId,
     this.recipients,
+    this.isVoice = false,
+    this.voiceId,
   });
 
   /// Get sender public key as hex string
@@ -354,6 +360,8 @@ class Message {
     String? drawingId,
     String? groupId,
     List<MessageRecipient>? recipients,
+    bool? isVoice,
+    String? voiceId,
   }) {
     return Message(
       id: id ?? this.id,
@@ -388,6 +396,8 @@ class Message {
       drawingId: drawingId ?? this.drawingId,
       groupId: groupId ?? this.groupId,
       recipients: recipients ?? this.recipients,
+      isVoice: isVoice ?? this.isVoice,
+      voiceId: voiceId ?? this.voiceId,
     );
   }
 

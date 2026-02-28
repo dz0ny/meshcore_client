@@ -97,6 +97,7 @@ class MeshCoreBleService {
   OnChannelInfoCallback? onChannelInfoReceived;
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
+  OnRawDataReceivedCallback? onRawDataReceived;
 
   // Activity callbacks (for blinking indicators)
   VoidCallback? onRxActivity;
@@ -224,6 +225,9 @@ class MeshCoreBleService {
     };
     _responseHandler.onContactsFull = () {
       onContactsFull?.call();
+    };
+    _responseHandler.onRawDataReceived = (payload, snrRaw, rssiDbm) {
+      onRawDataReceived?.call(payload, snrRaw, rssiDbm);
     };
     _responseHandler.onRxActivity = () {
       onRxActivity?.call();
@@ -449,6 +453,29 @@ class MeshCoreBleService {
       FrameBuilder.buildSendBinaryReq(
         contactPublicKey: contactPublicKey,
         requestData: requestData,
+      ),
+    );
+  }
+
+  /// Send a raw binary voice packet to a direct contact.
+  ///
+  /// Uses [cmdSendRawData] (25) which sends binary payload over PAYLOAD_TYPE_RAW_CUSTOM.
+  /// The receiver gets a [pushRawData] (0x84) push notification with the raw bytes.
+  ///
+  /// [contactPathLen] and [contactPath] come from [Contact.outPathLen] and [Contact.outPath].
+  /// [payload] is the raw voice packet (8-byte header + Codec2 data, max ~161 bytes).
+  ///
+  /// Note: flood/channel mode is NOT supported by firmware for raw data.
+  Future<void> sendRawVoicePacket({
+    required int contactPathLen,
+    required Uint8List contactPath,
+    required Uint8List payload,
+  }) async {
+    await _commandSender.writeData(
+      FrameBuilder.buildSendRawData(
+        pathLen: contactPathLen,
+        path: contactPath,
+        payload: payload,
       ),
     );
   }
