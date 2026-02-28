@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../models/contact.dart';
@@ -268,8 +269,10 @@ class BleResponseHandler {
           debugPrint('  → Path discovery response (not yet handled)');
           break;
         case MeshCoreConstants.pushRawData:
-          debugPrint('  → Handling RawData push');
-          _handleRawData(reader);
+          if (Platform.isIOS || Platform.isMacOS) {
+            debugPrint('  → Handling RawData push');
+            _handleRawData(reader);
+          }
           break;
         case MeshCoreConstants.pushControlData:
           debugPrint('  → Control data push (not yet handled)');
