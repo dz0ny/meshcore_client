@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:pointycastle/export.dart';
 import '../models/contact.dart';
 import '../models/message.dart';
 import '../models/ble_packet_log.dart';
@@ -77,6 +79,7 @@ class BleResponseHandler {
   final Map<String, SentMessageTracker> _sentMessageTrackers = {};
   static const int _maxTrackers = 100;
   static const Duration _trackerTTL = Duration(minutes: 5);
+  final Map<int, _KnownChannelSecret> _knownChannelSecrets = {};
 
   // Callbacks
   OnContactCallback? onContactReceived;
@@ -107,6 +110,14 @@ class BleResponseHandler {
 
   // Track the last command that was sent, so we can retry if it fails with ERR_CODE_NOT_FOUND
   Uint8List? _lastContactPublicKey;
+
+  BleResponseHandler() {
+    _rememberChannelSecret(
+      0,
+      'public',
+      Uint8List.fromList(MeshCoreConstants.defaultPublicChannelSecret),
+    );
+  }
 
   // Getters
   int get rxPacketCount => _rxPacketCount;
@@ -314,7 +325,9 @@ class BleResponseHandler {
     final rssiDbm = reader.readInt8();
     reader.readByte(); // reserved (0xFF)
     final payload = reader.readRemainingBytes();
-    debugPrint('  📡 [RawData] ${payload.length} bytes, SNR=$snrRaw, RSSI=$rssiDbm');
+    debugPrint(
+      '  📡 [RawData] ${payload.length} bytes, SNR=$snrRaw, RSSI=$rssiDbm',
+    );
     onRawDataReceived?.call(payload, snrRaw, rssiDbm);
   }
 
@@ -564,17 +577,17 @@ class BleResponseHandler {
       debugPrint('    Raw packet data: ${rawPacketData.length} bytes');
 
       // Decode packet header and path for display
-      if (rawPacketData.length >= 2) {
-        final header = rawPacketData[0];
-        final payloadType = (header >> 2) & 0x0F;
-        final pathLen = rawPacketData[1];
+      final parsed = _parseRawPacket(rawPacketData);
+      if (parsed != null) {
+        final payloadType = parsed.payloadType;
+        final pathLen = parsed.path.length;
 
         debugPrint(
           '    Packet type: 0x${payloadType.toRadixString(16).padLeft(2, '0')}',
         );
 
-        if (pathLen > 0 && rawPacketData.length >= 2 + pathLen) {
-          final path = rawPacketData.sublist(2, 2 + pathLen);
+        if (pathLen > 0) {
+          final path = parsed.path;
           final pathStr = path
               .map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}')
               .join(' → ');
@@ -605,6 +618,8 @@ class BleResponseHandler {
         } else {
           debugPrint('    Path length: $pathLen');
         }
+
+        _tryDecodeGroupPacket(parsed, snrRaw, rssiDbm);
       }
 
       // Calculate entropy
@@ -613,7 +628,7 @@ class BleResponseHandler {
       final isLikelyEncrypted = entropy > 0.7;
 
       // First, try to associate this packet with a recently sent message (within 2s)
-      _associatePacketWithSentMessage(rawPacketData);
+      _associatePacketWithSentMessage(rawPacketData, snrRaw, rssiDbm);
 
       // Then, check if this packet matches any sent message (echo detection)
       _checkForEcho(rawPacketData, snrRaw, rssiDbm);
@@ -645,6 +660,251 @@ class BleResponseHandler {
     } catch (e) {
       debugPrint('  ❌ [LogRxData] Parsing error: $e');
     }
+  }
+
+  _ParsedRawPacket? _parseRawPacket(Uint8List rawPacketData) {
+    if (rawPacketData.length < 2) return null;
+
+    final header = rawPacketData[0];
+    final routeType = header & 0x03;
+    final payloadType = (header >> 2) & 0x0F;
+    final payloadVer = (header >> 6) & 0x03;
+
+    int i = 1;
+    if (routeType == 0x00 || routeType == 0x03) {
+      // Transport routes include 2x uint16 transport codes.
+      if (rawPacketData.length < i + 4 + 1) return null;
+      i += 4;
+    }
+
+    if (rawPacketData.length <= i) return null;
+    final pathLen = rawPacketData[i++];
+    if (rawPacketData.length < i + pathLen) return null;
+
+    final path = rawPacketData.sublist(i, i + pathLen);
+    i += pathLen;
+    final payload = rawPacketData.sublist(i);
+
+    return _ParsedRawPacket(
+      header: header,
+      routeType: routeType,
+      payloadType: payloadType,
+      payloadVer: payloadVer,
+      path: path,
+      payload: payload,
+    );
+  }
+
+  void _tryDecodeGroupPacket(_ParsedRawPacket packet, int snrRaw, int rssiDbm) {
+    if (!(packet.payloadType == 0x05 || packet.payloadType == 0x06)) return;
+    if (packet.payload.length < 3) return;
+
+    final channelHash = packet.payload[0];
+    final packetMac = packet.payload.sublist(1, 3);
+    final encrypted = packet.payload.sublist(3);
+
+    if (encrypted.isEmpty || (encrypted.length % 16) != 0) {
+      debugPrint(
+        '    🔐 [LogRxData] Group payload has invalid encrypted length: ${encrypted.length}',
+      );
+      return;
+    }
+
+    final allCandidates = _knownChannelSecrets.values.toList();
+    if (allCandidates.isEmpty) return;
+
+    final matchingHashCandidates = allCandidates
+        .where((c) => _channelHashForSecret(c.secret16) == channelHash)
+        .toList();
+    final fallbackCandidates = allCandidates
+        .where((c) => _channelHashForSecret(c.secret16) != channelHash)
+        .toList();
+    final candidates = [...matchingHashCandidates, ...fallbackCandidates];
+
+    for (final candidate in candidates) {
+      if (!_isValidMac(candidate.secret16, packetMac, encrypted)) {
+        continue;
+      }
+
+      final decrypted = _aes128EcbDecrypt(candidate.secret16, encrypted);
+      if (decrypted == null || decrypted.length < 5) {
+        continue;
+      }
+
+      final ts = ByteData.sublistView(
+        decrypted,
+        0,
+        4,
+      ).getUint32(0, Endian.little);
+      final txtTypeRaw = decrypted[4];
+      final txtType = txtTypeRaw >> 2;
+      final attempt = txtTypeRaw & 0x03;
+
+      debugPrint(
+        '    🔓 [LogRxData] Decrypted with channel ${candidate.channelIdx} "${candidate.channelName}"',
+      );
+      debugPrint(
+        '       Channel hash: 0x${channelHash.toRadixString(16).padLeft(2, '0')}',
+      );
+      debugPrint('       Timestamp: $ts');
+
+      if (packet.payloadType == 0x05) {
+        if (txtType == 0) {
+          final text = _decodeCString(decrypted, 5);
+          debugPrint('       Text: $text');
+          _associateDecodedGroupPacket(
+            channelIdx: candidate.channelIdx,
+            decodedText: text,
+            rawPacket: packet,
+            snrRaw: snrRaw,
+            rssiDbm: rssiDbm,
+          );
+        } else {
+          debugPrint('       GRP_TXT meta: txtType=$txtType attempt=$attempt');
+        }
+      } else {
+        final sampleLen = decrypted.length < 32 ? decrypted.length : 32;
+        debugPrint(
+          '       GRP_DATA: ${decrypted.sublist(0, sampleLen).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
+        );
+      }
+      return;
+    }
+
+    debugPrint(
+      '    🔐 [LogRxData] Could not decrypt channel hash 0x${channelHash.toRadixString(16).padLeft(2, '0')} with ${allCandidates.length} known secrets',
+    );
+  }
+
+  bool _isValidMac(
+    Uint8List secret16,
+    Uint8List packetMac,
+    Uint8List encrypted,
+  ) {
+    final key32 = Uint8List(32);
+    key32.setRange(0, 16, secret16);
+    final digest = crypto.Hmac(crypto.sha256, key32).convert(encrypted).bytes;
+    return digest.length >= 2 &&
+        digest[0] == packetMac[0] &&
+        digest[1] == packetMac[1];
+  }
+
+  Uint8List? _aes128EcbDecrypt(Uint8List secret16, Uint8List encrypted) {
+    if (secret16.length != 16 || (encrypted.length % 16) != 0) return null;
+
+    final cipher = ECBBlockCipher(AESEngine())
+      ..init(false, KeyParameter(secret16));
+    final out = Uint8List(encrypted.length);
+    for (int i = 0; i < encrypted.length; i += 16) {
+      cipher.processBlock(encrypted, i, out, i);
+    }
+    return out;
+  }
+
+  int _channelHashForSecret(Uint8List secret16) {
+    final digest = crypto.sha256.convert(secret16).bytes;
+    return digest.first;
+  }
+
+  String _decodeCString(Uint8List data, int start) {
+    if (start >= data.length) return '';
+    int end = start;
+    while (end < data.length && data[end] != 0) {
+      end++;
+    }
+    return utf8.decode(data.sublist(start, end), allowMalformed: true);
+  }
+
+  void _rememberChannelSecret(
+    int channelIdx,
+    String channelName,
+    Uint8List secret,
+  ) {
+    if (secret.length < 16) return;
+    final secret16 = Uint8List.fromList(secret.sublist(0, 16));
+    final isZeroSecret = secret16.every((b) => b == 0);
+    if (isZeroSecret && channelIdx != 0) {
+      _knownChannelSecrets.remove(channelIdx);
+      return;
+    }
+
+    _knownChannelSecrets[channelIdx] = _KnownChannelSecret(
+      channelIdx: channelIdx,
+      channelName: channelName.isEmpty ? 'ch$channelIdx' : channelName,
+      secret16: secret16,
+    );
+  }
+
+  void _associateDecodedGroupPacket({
+    required int channelIdx,
+    required String decodedText,
+    required _ParsedRawPacket rawPacket,
+    required int snrRaw,
+    required int rssiDbm,
+  }) {
+    if (decodedText.isEmpty) return;
+
+    final now = DateTime.now();
+    final normalizedDecoded = _normalizeChannelText(decodedText);
+    if (normalizedDecoded.isEmpty) return;
+
+    final pathSignature = rawPacket.path
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join(':');
+
+    for (final entry in _sentMessageTrackers.entries.toList()) {
+      final tracker = entry.value;
+      if (tracker.packetHashHex != 'pending') continue;
+      if (tracker.isExpired) continue;
+
+      final timeSinceSent = now.difference(tracker.sentTime);
+      if (timeSinceSent.inMilliseconds > 15000) continue;
+
+      if (tracker.channelIdx != null && tracker.channelIdx != channelIdx) {
+        continue;
+      }
+
+      final trackedText = tracker.plainText;
+      if (trackedText == null || trackedText.isEmpty) continue;
+      final normalizedTracked = _normalizeChannelText(trackedText);
+      if (normalizedTracked.isEmpty) continue;
+
+      if (normalizedDecoded != normalizedTracked) continue;
+
+      final payloadHash = _simplePacketHash(rawPacket.payload);
+      _sentMessageTrackers.remove(entry.key);
+
+      final updatedTracker = SentMessageTracker(
+        messageId: tracker.messageId,
+        packetHashHex: payloadHash,
+        rawPacket: null,
+        sentTime: tracker.sentTime,
+        expiryTime: tracker.expiryTime,
+        echoCount: 1,
+        channelIdx: tracker.channelIdx,
+        plainText: tracker.plainText,
+        uniqueEchoPaths: {pathSignature},
+        echoTimestamps: [now],
+      );
+
+      _sentMessageTrackers[payloadHash] = updatedTracker;
+      debugPrint('  📦 [Echo] Associated by decoded channel text');
+      debugPrint('     Message ID: ${tracker.messageId}');
+      debugPrint('     Channel: $channelIdx');
+      debugPrint('     Text match: "$normalizedTracked"');
+      onMessageEchoDetected?.call(tracker.messageId, 1, snrRaw, rssiDbm);
+      break;
+    }
+  }
+
+  String _normalizeChannelText(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return '';
+    final idx = trimmed.indexOf(': ');
+    if (idx > 0 && idx + 2 < trimmed.length) {
+      return trimmed.substring(idx + 2).trim();
+    }
+    return trimmed;
   }
 
   /// Simple hash function for packet identification (replaces SHA256)
@@ -770,7 +1030,12 @@ class BleResponseHandler {
   /// we track ANY GRP_TXT packets that arrive shortly after sending.
   /// The first packet with matching encrypted payload is likely our message,
   /// and subsequent packets with the same payload are echoes.
-  void trackSentMessage(String messageId, Uint8List? rawPacket) {
+  void trackSentMessage(
+    String messageId,
+    Uint8List? rawPacket, {
+    int? channelIdx,
+    String? plainText,
+  }) {
     try {
       final now = DateTime.now();
       final tracker = SentMessageTracker(
@@ -779,6 +1044,8 @@ class BleResponseHandler {
         rawPacket: null,
         sentTime: now,
         expiryTime: now.add(_trackerTTL),
+        channelIdx: channelIdx,
+        plainText: plainText,
       );
 
       // Store by message ID temporarily
@@ -822,7 +1089,11 @@ class BleResponseHandler {
   /// [1] = path_len
   /// [2] = path[0] = sender's node hash
   /// [3+] = rest of path + encrypted payload
-  void _associatePacketWithSentMessage(Uint8List rawPacket) {
+  void _associatePacketWithSentMessage(
+    Uint8List rawPacket,
+    int snrRaw,
+    int rssiDbm,
+  ) {
     try {
       debugPrint(
         '  🔍 [Echo] _associatePacketWithSentMessage called, packet size: ${rawPacket.length}',
@@ -899,6 +1170,8 @@ class BleResponseHandler {
           sentTime: tracker.sentTime,
           expiryTime: tracker.expiryTime,
           echoCount: 1, // This first packet counts as an echo
+          channelIdx: tracker.channelIdx,
+          plainText: tracker.plainText,
           uniqueEchoPaths: {pathSignature}, // Track unique paths
           echoTimestamps: [now],
         );
@@ -912,7 +1185,7 @@ class BleResponseHandler {
         debugPrint('     Echo count: 1 (first detection)');
 
         // Notify immediately that we have 1 echo
-        onMessageEchoDetected?.call(tracker.messageId, 1, 0, 0);
+        onMessageEchoDetected?.call(tracker.messageId, 1, snrRaw, rssiDbm);
         break; // Only associate with first pending tracker
       }
     } catch (e) {
@@ -1127,11 +1400,16 @@ class BleResponseHandler {
 
         debugPrint('  ✅ [ChannelInfo] Channel $channelIdx: "$channelName"');
         debugPrint('     Name length: ${channelName.length}');
-        debugPrint('     Name bytes: ${channelName.codeUnits.map((c) => c.toRadixString(16).padLeft(2, '0')).join(' ')}');
-        debugPrint('     Secret: ${secret.map((b) => b.toRadixString(16).padLeft(2, '0')).join('')}');
+        debugPrint(
+          '     Name bytes: ${channelName.codeUnits.map((c) => c.toRadixString(16).padLeft(2, '0')).join(' ')}',
+        );
+        debugPrint(
+          '     Secret: ${secret.map((b) => b.toRadixString(16).padLeft(2, '0')).join('')}',
+        );
         debugPrint('     isEmpty: ${channelName.isEmpty}');
         debugPrint('     Callback exists: ${onChannelInfoReceived != null}');
-        
+        _rememberChannelSecret(channelIdx, channelName, secret);
+
         if (onChannelInfoReceived != null) {
           debugPrint('     🔔 Calling onChannelInfoReceived callback...');
           onChannelInfoReceived!(channelIdx, channelName, secret, flags);
@@ -1264,4 +1542,34 @@ class BleResponseHandler {
     _sentMessageTrackers.clear();
     _packetLogs.clear();
   }
+}
+
+class _KnownChannelSecret {
+  final int channelIdx;
+  final String channelName;
+  final Uint8List secret16;
+
+  _KnownChannelSecret({
+    required this.channelIdx,
+    required this.channelName,
+    required this.secret16,
+  });
+}
+
+class _ParsedRawPacket {
+  final int header;
+  final int routeType;
+  final int payloadType;
+  final int payloadVer;
+  final Uint8List path;
+  final Uint8List payload;
+
+  _ParsedRawPacket({
+    required this.header,
+    required this.routeType,
+    required this.payloadType,
+    required this.payloadVer,
+    required this.path,
+    required this.payload,
+  });
 }

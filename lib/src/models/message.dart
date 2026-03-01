@@ -125,6 +125,9 @@ class Message {
   // Echo detection for public channel messages
   final int echoCount; // Number of times message was detected being rebroadcast
   final DateTime? firstEchoAt; // When first echo was detected
+  final int? lastEchoSnrRaw; // Latest echo SNR raw value (*4 dB)
+  final int? lastEchoRssiDbm; // Latest echo RSSI dBm
+  final DateTime? lastEchoAt; // Timestamp of the latest echo
 
   // Drawing message tracking
   final bool isDrawing; // Whether this message contains a map drawing
@@ -167,6 +170,9 @@ class Message {
     this.isRead = false,
     this.echoCount = 0,
     this.firstEchoAt,
+    this.lastEchoSnrRaw,
+    this.lastEchoRssiDbm,
+    this.lastEchoAt,
     this.isDrawing = false,
     this.drawingId,
     this.groupId,
@@ -356,6 +362,9 @@ class Message {
     bool? isRead,
     int? echoCount,
     DateTime? firstEchoAt,
+    int? lastEchoSnrRaw,
+    int? lastEchoRssiDbm,
+    DateTime? lastEchoAt,
     bool? isDrawing,
     String? drawingId,
     String? groupId,
@@ -392,6 +401,9 @@ class Message {
       isRead: isRead ?? this.isRead,
       echoCount: echoCount ?? this.echoCount,
       firstEchoAt: firstEchoAt ?? this.firstEchoAt,
+      lastEchoSnrRaw: lastEchoSnrRaw ?? this.lastEchoSnrRaw,
+      lastEchoRssiDbm: lastEchoRssiDbm ?? this.lastEchoRssiDbm,
+      lastEchoAt: lastEchoAt ?? this.lastEchoAt,
       isDrawing: isDrawing ?? this.isDrawing,
       drawingId: drawingId ?? this.drawingId,
       groupId: groupId ?? this.groupId,

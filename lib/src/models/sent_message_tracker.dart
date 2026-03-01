@@ -33,6 +33,12 @@ class SentMessageTracker {
   /// Timestamps when echoes were detected
   final List<DateTime> echoTimestamps;
 
+  /// Channel index of the sent message (if known)
+  final int? channelIdx;
+
+  /// Original plain text sent by the app (if known)
+  final String? plainText;
+
   SentMessageTracker({
     required this.messageId,
     required this.packetHashHex,
@@ -40,10 +46,12 @@ class SentMessageTracker {
     required this.sentTime,
     required this.expiryTime,
     this.echoCount = 0,
+    this.channelIdx,
+    this.plainText,
     Set<String>? uniqueEchoPaths,
     List<DateTime>? echoTimestamps,
-  })  : uniqueEchoPaths = uniqueEchoPaths ?? {},
-        echoTimestamps = echoTimestamps ?? [];
+  }) : uniqueEchoPaths = uniqueEchoPaths ?? {},
+       echoTimestamps = echoTimestamps ?? [];
 
   /// Check if this tracker has expired
   bool get isExpired => DateTime.now().isAfter(expiryTime);

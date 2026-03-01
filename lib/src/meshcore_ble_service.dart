@@ -31,12 +31,13 @@ typedef OnLoginSuccessCallback =
 typedef OnLoginFailCallback = void Function(Uint8List publicKeyPrefix);
 typedef OnAdvertReceivedCallback = void Function(Uint8List publicKey);
 typedef OnPathUpdatedCallback = void Function(Uint8List publicKey);
-typedef OnMessageSentCallback = void Function(
-  int expectedAckTag,
-  int suggestedTimeoutMs,
-  bool isFloodMode,
-  Uint8List? contactPublicKey,
-);
+typedef OnMessageSentCallback =
+    void Function(
+      int expectedAckTag,
+      int suggestedTimeoutMs,
+      bool isFloodMode,
+      Uint8List? contactPublicKey,
+    );
 typedef OnMessageDeliveredCallback =
     void Function(int ackCode, int roundTripTimeMs);
 typedef OnMessageEchoDetectedCallback =
@@ -50,7 +51,12 @@ typedef OnBatteryAndStorageCallback =
 typedef OnErrorCallback = void Function(String error, {int? errorCode});
 typedef OnContactNotFoundCallback = void Function(Uint8List? contactPublicKey);
 typedef OnChannelInfoCallback =
-    void Function(int channelIdx, String channelName, Uint8List secret, int? flags);
+    void Function(
+      int channelIdx,
+      String channelName,
+      Uint8List secret,
+      int? flags,
+    );
 typedef OnConnectionStateCallback = void Function(bool isConnected);
 typedef OnReconnectionAttemptCallback =
     void Function(int attemptNumber, int maxAttempts);
@@ -143,19 +149,27 @@ class MeshCoreBleService {
 
     // Response handler callbacks
     _responseHandler.onContactReceived = (contact) {
-      debugPrint('🔔 [BleService] onContactReceived - "${contact.advName}" - forwarding to ConnectionProvider');
+      debugPrint(
+        '🔔 [BleService] onContactReceived - "${contact.advName}" - forwarding to ConnectionProvider',
+      );
       onContactReceived?.call(contact);
     };
     _responseHandler.onContactsComplete = (contacts) {
-      debugPrint('🔔 [BleService] onContactsComplete - ${contacts.length} contacts - forwarding to ConnectionProvider');
+      debugPrint(
+        '🔔 [BleService] onContactsComplete - ${contacts.length} contacts - forwarding to ConnectionProvider',
+      );
       onContactsComplete?.call(contacts);
     };
     _responseHandler.onMessageReceived = (message) {
-      debugPrint('🔔 [BleService] onMessageReceived - forwarding to ConnectionProvider');
+      debugPrint(
+        '🔔 [BleService] onMessageReceived - forwarding to ConnectionProvider',
+      );
       onMessageReceived?.call(message);
     };
     _responseHandler.onTelemetryReceived = (publicKey, lppData) {
-      debugPrint('🔔 [BleService] onTelemetryReceived - ${lppData.length} bytes - forwarding to ConnectionProvider');
+      debugPrint(
+        '🔔 [BleService] onTelemetryReceived - ${lppData.length} bytes - forwarding to ConnectionProvider',
+      );
       onTelemetryReceived?.call(publicKey, lppData);
     };
     _responseHandler.onSelfInfoReceived = (selfInfo) {
@@ -185,16 +199,25 @@ class MeshCoreBleService {
       onLoginFail?.call(publicKeyPrefix);
     };
     _responseHandler.onAdvertReceived = (publicKey) {
-      debugPrint('🔔 [BleService] onAdvertReceived - forwarding to ConnectionProvider');
+      debugPrint(
+        '🔔 [BleService] onAdvertReceived - forwarding to ConnectionProvider',
+      );
       onAdvertReceived?.call(publicKey);
     };
     _responseHandler.onPathUpdated = (publicKey) {
-      debugPrint('🔔 [BleService] onPathUpdated - forwarding to ConnectionProvider');
+      debugPrint(
+        '🔔 [BleService] onPathUpdated - forwarding to ConnectionProvider',
+      );
       onPathUpdated?.call(publicKey);
     };
     _responseHandler.onMessageSent =
         (expectedAckTag, suggestedTimeoutMs, isFloodMode, contactPublicKey) {
-          onMessageSent?.call(expectedAckTag, suggestedTimeoutMs, isFloodMode, contactPublicKey);
+          onMessageSent?.call(
+            expectedAckTag,
+            suggestedTimeoutMs,
+            isFloodMode,
+            contactPublicKey,
+          );
         };
     _responseHandler.onMessageDelivered = (ackCode, roundTripTimeMs) {
       onMessageDelivered?.call(ackCode, roundTripTimeMs);
@@ -218,9 +241,10 @@ class MeshCoreBleService {
     _responseHandler.onContactNotFound = (contactPublicKey) {
       onContactNotFound?.call(contactPublicKey);
     };
-    _responseHandler.onChannelInfoReceived = (int channelIdx, String channelName, Uint8List secret, int? flags) {
-      onChannelInfoReceived?.call(channelIdx, channelName, secret, flags);
-    };
+    _responseHandler.onChannelInfoReceived =
+        (int channelIdx, String channelName, Uint8List secret, int? flags) {
+          onChannelInfoReceived?.call(channelIdx, channelName, secret, flags);
+        };
     _responseHandler.onContactDeleted = (publicKey) {
       onContactDeleted?.call(publicKey);
     };
@@ -360,7 +384,9 @@ class MeshCoreBleService {
     debugPrint(
       '    Public key prefix: ${publicKey.sublist(0, 6).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':')}...',
     );
-    await _commandSender.writeData(FrameBuilder.buildGetContactByKey(publicKey));
+    await _commandSender.writeData(
+      FrameBuilder.buildGetContactByKey(publicKey),
+    );
   }
 
   /// Manually add or update a contact on the companion radio
@@ -403,11 +429,20 @@ class MeshCoreBleService {
 
   /// Send flood-mode text message to channel
   /// Track a sent channel message for echo detection
-  void trackSentChannelMessage(String messageId) {
+  void trackSentChannelMessage(
+    String messageId, {
+    int? channelIdx,
+    String? plainText,
+  }) {
     debugPrint(
       '🔵 [MeshCoreBleService] trackSentChannelMessage called for: $messageId',
     );
-    _responseHandler.trackSentMessage(messageId, null);
+    _responseHandler.trackSentMessage(
+      messageId,
+      null,
+      channelIdx: channelIdx,
+      plainText: plainText,
+    );
   }
 
   /// Send a text message to a channel (flood-mode broadcast)
@@ -663,7 +698,9 @@ class MeshCoreBleService {
     debugPrint('    Channel index: $channelIdx');
     debugPrint('    Channel name: $channelName');
     debugPrint('    Secret length: ${secret.length} bytes');
-    debugPrint('    Secret hex: ${secret.map((b) => b.toRadixString(16).padLeft(2, '0')).join('')}');
+    debugPrint(
+      '    Secret hex: ${secret.map((b) => b.toRadixString(16).padLeft(2, '0')).join('')}',
+    );
 
     // Send SET_CHANNEL command (fire-and-forget, no ACK expected)
     final setChannelData = FrameBuilder.buildSetChannel(
@@ -671,8 +708,10 @@ class MeshCoreBleService {
       channelName: channelName,
       secret: secret,
     );
-    debugPrint('    SET_CHANNEL data (${setChannelData.length} bytes): ${setChannelData.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
-    
+    debugPrint(
+      '    SET_CHANNEL data (${setChannelData.length} bytes): ${setChannelData.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
+    );
+
     await _commandSender.writeData(setChannelData);
     debugPrint('✅ [BLE] CMD_SET_CHANNEL sent');
 
@@ -742,7 +781,9 @@ class MeshCoreBleService {
   void _startKeepalive() {
     _stopKeepalive(); // Stop any existing timer
 
-    debugPrint('🔄 [BLE] Starting keepalive timer (${_keepaliveInterval.inSeconds}s interval)');
+    debugPrint(
+      '🔄 [BLE] Starting keepalive timer (${_keepaliveInterval.inSeconds}s interval)',
+    );
 
     _keepaliveTimer = Timer.periodic(_keepaliveInterval, (timer) async {
       if (!isConnected) {
@@ -756,7 +797,9 @@ class MeshCoreBleService {
         // This is a fallback in case PUSH_CODE_MSG_WAITING doesn't fire
         // If no messages waiting, device responds with RESP_CODE_NO_MORE_MSG
         await syncNextMessage();
-        debugPrint('💚 [BLE] Keepalive: Connection maintained & messages synced');
+        debugPrint(
+          '💚 [BLE] Keepalive: Connection maintained & messages synced',
+        );
       } catch (e) {
         debugPrint('⚠️ [BLE] Keepalive error: $e');
         // Don't stop timer on error - iOS might throttle commands temporarily
