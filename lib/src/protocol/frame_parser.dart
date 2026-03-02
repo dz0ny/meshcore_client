@@ -46,8 +46,9 @@ class FrameParser {
       final sendType = reader.readByte();
       final isFloodMode = sendType == 1;
       final expectedAckOrTagBytes = reader.readBytes(4);
-      final expectedAckTag = ByteData.sublistView(Uint8List.fromList(expectedAckOrTagBytes))
-          .getUint32(0, Endian.little);
+      final expectedAckTag = ByteData.sublistView(
+        Uint8List.fromList(expectedAckOrTagBytes),
+      ).getUint32(0, Endian.little);
       final suggestedTimeout = reader.readUInt32LE();
 
       return {
@@ -158,10 +159,7 @@ class FrameParser {
     final pubKeyPrefix = reader.readBytes(6);
     final lppSensorData = reader.readRemainingBytes();
 
-    return {
-      'publicKeyPrefix': pubKeyPrefix,
-      'lppSensorData': lppSensorData,
-    };
+    return {'publicKeyPrefix': pubKeyPrefix, 'lppSensorData': lppSensorData};
   }
 
   /// Parse BinaryResponse push
@@ -198,22 +196,30 @@ class FrameParser {
     String? firmwareBuildDate;
     if (reader.remainingBytesCount >= 12) {
       final buildDateBytes = reader.readBytes(12);
-      firmwareBuildDate =
-          String.fromCharCodes(buildDateBytes.takeWhile((b) => b != 0));
+      firmwareBuildDate = String.fromCharCodes(
+        buildDateBytes.takeWhile((b) => b != 0),
+      );
     }
 
     String? manufacturerModel;
     if (reader.remainingBytesCount >= 40) {
       final modelBytes = reader.readBytes(40);
-      manufacturerModel =
-          String.fromCharCodes(modelBytes.takeWhile((b) => b != 0));
+      manufacturerModel = String.fromCharCodes(
+        modelBytes.takeWhile((b) => b != 0),
+      );
     }
 
     String? semanticVersion;
     if (reader.remainingBytesCount >= 20) {
       final versionBytes = reader.readBytes(20);
-      semanticVersion =
-          String.fromCharCodes(versionBytes.takeWhile((b) => b != 0));
+      semanticVersion = String.fromCharCodes(
+        versionBytes.takeWhile((b) => b != 0),
+      );
+    }
+
+    bool? clientRepeat;
+    if (reader.hasRemaining) {
+      clientRepeat = reader.readByte() != 0;
     }
 
     return {
@@ -224,7 +230,22 @@ class FrameParser {
       'firmwareBuildDate': firmwareBuildDate,
       'manufacturerModel': manufacturerModel,
       'semanticVersion': semanticVersion,
+      'clientRepeat': clientRepeat,
     };
+  }
+
+  /// Parse AllowedRepeatFreq response
+  /// Returns list of frequency ranges as (lower, upper) pairs in kHz.
+  static List<({int lower, int upper})> parseAllowedRepeatFreq(
+    BufferReader reader,
+  ) {
+    final ranges = <({int lower, int upper})>[];
+    while (reader.remainingBytesCount >= 8) {
+      final lower = reader.readUInt32LE();
+      final upper = reader.readUInt32LE();
+      ranges.add((lower: lower, upper: upper));
+    }
+    return ranges;
   }
 
   /// Parse SelfInfo response
@@ -240,12 +261,14 @@ class FrameParser {
     final publicKey = reader.readBytes(32);
 
     final advLatBytes = reader.readBytes(4);
-    final advLat = ByteData.sublistView(Uint8List.fromList(advLatBytes))
-        .getInt32(0, Endian.little);
+    final advLat = ByteData.sublistView(
+      Uint8List.fromList(advLatBytes),
+    ).getInt32(0, Endian.little);
 
     final advLonBytes = reader.readBytes(4);
-    final advLon = ByteData.sublistView(Uint8List.fromList(advLonBytes))
-        .getInt32(0, Endian.little);
+    final advLon = ByteData.sublistView(
+      Uint8List.fromList(advLonBytes),
+    ).getInt32(0, Endian.little);
 
     reader.readByte(); // multiAcks (reserved for future use)
     reader.readByte(); // advertLocPolicy (reserved for future use)
@@ -253,12 +276,14 @@ class FrameParser {
     final manualAddContacts = reader.readByte();
 
     final radioFreqBytes = reader.readBytes(4);
-    final radioFreq = ByteData.sublistView(Uint8List.fromList(radioFreqBytes))
-        .getUint32(0, Endian.little);
+    final radioFreq = ByteData.sublistView(
+      Uint8List.fromList(radioFreqBytes),
+    ).getUint32(0, Endian.little);
 
     final radioBwBytes = reader.readBytes(4);
-    final radioBw = ByteData.sublistView(Uint8List.fromList(radioBwBytes))
-        .getUint32(0, Endian.little);
+    final radioBw = ByteData.sublistView(
+      Uint8List.fromList(radioBwBytes),
+    ).getUint32(0, Endian.little);
 
     final radioSf = reader.readByte();
     final radioCr = reader.readByte();
@@ -305,14 +330,12 @@ class FrameParser {
   static Map<String, dynamic> parseSendConfirmed(BufferReader reader) {
     if (reader.remainingBytesCount >= 8) {
       final ackCodeBytes = reader.readBytes(4);
-      final ackCode = ByteData.sublistView(Uint8List.fromList(ackCodeBytes))
-          .getUint32(0, Endian.little);
+      final ackCode = ByteData.sublistView(
+        Uint8List.fromList(ackCodeBytes),
+      ).getUint32(0, Endian.little);
       final roundTripTime = reader.readUInt32LE();
 
-      return {
-        'ackCode': ackCode,
-        'roundTripTime': roundTripTime,
-      };
+      return {'ackCode': ackCode, 'roundTripTime': roundTripTime};
     }
     return {};
   }
@@ -357,10 +380,7 @@ class FrameParser {
       final publicKeyPrefix = reader.readBytes(6);
       final statusData = reader.readRemainingBytes();
 
-      return {
-        'publicKeyPrefix': publicKeyPrefix,
-        'statusData': statusData,
-      };
+      return {'publicKeyPrefix': publicKeyPrefix, 'statusData': statusData};
     }
     return {};
   }
@@ -388,11 +408,7 @@ class FrameParser {
         usedKb = reader.readUInt32LE();
       }
 
-      return {
-        'millivolts': millivolts,
-        'usedKb': usedKb,
-        'totalKb': totalKb,
-      };
+      return {'millivolts': millivolts, 'usedKb': usedKb, 'totalKb': totalKb};
     }
     return {};
   }
@@ -416,7 +432,7 @@ class FrameParser {
     final channelIdx = reader.readByte();
     final channelName = reader.readCString(32);
     final secret = reader.readBytes(16);
-    
+
     // Flags field is optional (some firmware versions don't include it)
     int? flags;
     if (reader.remainingBytesCount >= 1) {

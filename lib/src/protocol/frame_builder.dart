@@ -99,7 +99,10 @@ class FrameBuilder {
 
   /// Build SendTelemetryReq command
   /// Requests telemetry (GPS, battery) from a contact
-  static Uint8List buildSendTelemetryReq(Uint8List contactPublicKey, {bool zeroHop = false}) {
+  static Uint8List buildSendTelemetryReq(
+    Uint8List contactPublicKey, {
+    bool zeroHop = false,
+  }) {
     final writer = BufferWriter();
     writer.writeByte(MeshCoreConstants.cmdSendTelemetryReq);
     writer.writeByte(zeroHop ? 0 : 255);
@@ -175,7 +178,11 @@ class FrameBuilder {
   static Uint8List buildSendSelfAdvert({bool floodMode = true}) {
     final writer = BufferWriter();
     writer.writeByte(MeshCoreConstants.cmdSendSelfAdvert);
-    writer.writeByte(floodMode ? MeshCoreConstants.selfAdvertFlood : MeshCoreConstants.selfAdvertZeroHop);
+    writer.writeByte(
+      floodMode
+          ? MeshCoreConstants.selfAdvertFlood
+          : MeshCoreConstants.selfAdvertZeroHop,
+    );
     return writer.toBytes();
   }
 
@@ -200,11 +207,13 @@ class FrameBuilder {
   }
 
   /// Build SetRadioParams command
+  /// [repeat] optional: 1 = enable client repeat (firmware v9+), 0 = disable
   static Uint8List buildSetRadioParams({
     required int frequency,
     required int bandwidth,
     required int spreadingFactor,
     required int codingRate,
+    int? repeat,
   }) {
     final writer = BufferWriter();
     writer.writeByte(MeshCoreConstants.cmdSetRadioParams);
@@ -212,6 +221,16 @@ class FrameBuilder {
     writer.writeUInt16LE(bandwidth);
     writer.writeByte(spreadingFactor);
     writer.writeByte(codingRate);
+    if (repeat != null) {
+      writer.writeByte(repeat);
+    }
+    return writer.toBytes();
+  }
+
+  /// Build GetAllowedRepeatFreq command (firmware v9+)
+  static Uint8List buildGetAllowedRepeatFreq() {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdGetAllowedRepeatFreq);
     return writer.toBytes();
   }
 
@@ -293,7 +312,9 @@ class FrameBuilder {
     required List<int> secret,
   }) {
     if (secret.length != 16) {
-      throw ArgumentError('Channel secret must be exactly 16 bytes (got ${secret.length})');
+      throw ArgumentError(
+        'Channel secret must be exactly 16 bytes (got ${secret.length})',
+      );
     }
 
     final writer = BufferWriter();

@@ -50,6 +50,8 @@ typedef OnBatteryAndStorageCallback =
     void Function(int millivolts, int? usedKb, int? totalKb);
 typedef OnErrorCallback = void Function(String error, {int? errorCode});
 typedef OnContactNotFoundCallback = void Function(Uint8List? contactPublicKey);
+typedef OnAllowedRepeatFreqCallback =
+    void Function(List<({int lower, int upper})> ranges);
 typedef OnChannelInfoCallback =
     void Function(
       int channelIdx,
@@ -102,6 +104,7 @@ class MeshCoreBleService {
   OnErrorCallback? onError;
   OnContactNotFoundCallback? onContactNotFound;
   OnChannelInfoCallback? onChannelInfoReceived;
+  OnAllowedRepeatFreqCallback? onAllowedRepeatFreqReceived;
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
   OnRawDataReceivedCallback? onRawDataReceived;
@@ -250,6 +253,9 @@ class MeshCoreBleService {
     };
     _responseHandler.onContactsFull = () {
       onContactsFull?.call();
+    };
+    _responseHandler.onAllowedRepeatFreqReceived = (ranges) {
+      onAllowedRepeatFreqReceived?.call(ranges);
     };
     if (Platform.isIOS || Platform.isMacOS) {
       _responseHandler.onRawDataReceived = (payload, snrRaw, rssiDbm) {
@@ -575,11 +581,13 @@ class MeshCoreBleService {
   }
 
   /// Set radio parameters
+  /// [repeat] optional: true = enable client repeat (firmware v9+)
   Future<void> setRadioParams({
     required int frequency,
     required int bandwidth,
     required int spreadingFactor,
     required int codingRate,
+    bool? repeat,
   }) async {
     await _commandSender.writeDataAndWaitForAck(
       FrameBuilder.buildSetRadioParams(
@@ -587,8 +595,14 @@ class MeshCoreBleService {
         bandwidth: bandwidth,
         spreadingFactor: spreadingFactor,
         codingRate: codingRate,
+        repeat: repeat == null ? null : (repeat ? 1 : 0),
       ),
     );
+  }
+
+  /// Query allowed repeat frequencies (firmware v9+)
+  Future<void> getAllowedRepeatFreq() async {
+    await _commandSender.writeData(FrameBuilder.buildGetAllowedRepeatFreq());
   }
 
   /// Set transmit power

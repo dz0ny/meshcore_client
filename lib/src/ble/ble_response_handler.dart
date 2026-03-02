@@ -63,6 +63,8 @@ typedef OnMessageEchoDetectedCallback =
     void Function(String messageId, int echoCount, int snrRaw, int rssiDbm);
 typedef OnRawDataReceivedCallback =
     void Function(Uint8List payload, int snrRaw, int rssiDbm);
+typedef OnAllowedRepeatFreqCallback =
+    void Function(List<({int lower, int upper})> ranges);
 
 /// Processes incoming responses from the BLE device
 class BleResponseHandler {
@@ -104,6 +106,7 @@ class BleResponseHandler {
   OnChannelInfoCallback? onChannelInfoReceived;
   OnMessageEchoDetectedCallback? onMessageEchoDetected;
   OnRawDataReceivedCallback? onRawDataReceived;
+  OnAllowedRepeatFreqCallback? onAllowedRepeatFreqReceived;
   VoidCallback? onRxActivity;
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
@@ -271,6 +274,10 @@ class BleResponseHandler {
         case MeshCoreConstants.respChannelInfo:
           debugPrint('  → Handling ChannelInfo');
           _handleChannelInfo(reader);
+          break;
+        case MeshCoreConstants.respAllowedRepeatFreq:
+          debugPrint('  → Handling AllowedRepeatFreq');
+          _handleAllowedRepeatFreq(reader);
           break;
         case MeshCoreConstants.respNoMoreMessages:
           debugPrint('  → Response: No More Messages');
@@ -1421,6 +1428,18 @@ class BleResponseHandler {
     } catch (e) {
       debugPrint('  ❌ [ChannelInfo] Parsing error: $e');
       onError?.call('ChannelInfo parsing error: $e');
+    }
+  }
+
+  /// Handle AllowedRepeatFreq response (respAllowedRepeatFreq = 26)
+  void _handleAllowedRepeatFreq(BufferReader reader) {
+    try {
+      final ranges = FrameParser.parseAllowedRepeatFreq(reader);
+      debugPrint('  ✅ [AllowedRepeatFreq] ${ranges.length} range(s)');
+      onAllowedRepeatFreqReceived?.call(ranges);
+    } catch (e) {
+      debugPrint('  ❌ [AllowedRepeatFreq] Parsing error: $e');
+      onError?.call('AllowedRepeatFreq parsing error: $e');
     }
   }
 
