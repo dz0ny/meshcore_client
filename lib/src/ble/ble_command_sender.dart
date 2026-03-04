@@ -7,9 +7,13 @@ import 'ble_command_queue.dart';
 /// Callback types for sender events
 typedef OnErrorCallback = void Function(String error);
 
-/// Sends commands to the BLE device
+/// Sends commands to the BLE device (or TCP socket via callback)
 class BleCommandSender {
   BluetoothCharacteristic? _rxCharacteristic;
+
+  /// Optional TCP write callback - when set, overrides BLE characteristic writes.
+  Future<void> Function(Uint8List)? _tcpWriteCallback;
+
   int _txPacketCount = 0;
   final List<BlePacketLog> _packetLogs = [];
   static const int _maxLogSize = 1000;
@@ -26,18 +30,23 @@ class BleCommandSender {
   List<BlePacketLog> get packetLogs => List.unmodifiable(_packetLogs);
   BleCommandQueue get commandQueue => _commandQueue;
 
-  /// Set the RX characteristic to write to
+  /// Set the RX characteristic to write to (BLE transport)
   void setRxCharacteristic(BluetoothCharacteristic? characteristic) {
     _rxCharacteristic = characteristic;
+    _tcpWriteCallback = null;
   }
 
-  /// Write data to RX characteristic (fire-and-forget, no response expected)
-  ///
-  /// This method is for commands that don't expect any response.
-  /// The command is queued and executed with proper spacing, but we don't wait
-  /// for any acknowledgment.
+  /// Set a TCP write callback (overrides BLE characteristic)
+  void setTcpWriteCallback(Future<void> Function(Uint8List) callback) {
+    _tcpWriteCallback = callback;
+    _rxCharacteristic = null;
+  }
+
+  bool get _isReady => _rxCharacteristic != null || _tcpWriteCallback != null;
+
+  /// Write data (fire-and-forget, no response expected)
   Future<void> writeData(Uint8List data) async {
-    if (_rxCharacteristic == null) {
+    if (!_isReady) {
       throw Exception('Not connected');
     }
 
@@ -61,7 +70,7 @@ class BleCommandSender {
   ///
   /// Examples: setAdvertLatLon, setAdvertName, setRadioParams, etc.
   Future<void> writeDataAndWaitForAck(Uint8List data) async {
-    if (_rxCharacteristic == null) {
+    if (!_isReady) {
       throw Exception('Not connected');
     }
 
@@ -94,7 +103,7 @@ class BleCommandSender {
     Uint8List data,
     int expectedResponseCode,
   ) async {
-    if (_rxCharacteristic == null) {
+    if (!_isReady) {
       throw Exception('Not connected');
     }
 
@@ -115,14 +124,13 @@ class BleCommandSender {
     return responseFuture;
   }
 
-  /// Internal method to actually send data to the BLE device
+  /// Internal method to actually send data to the device (BLE or TCP)
   Future<void> _sendToDevice(Uint8List data) async {
-    if (_rxCharacteristic == null) {
+    if (_rxCharacteristic == null && _tcpWriteCallback == null) {
       throw Exception('Not connected');
     }
 
     try {
-      // Extract command code from first byte
       final commandCode = data.isNotEmpty ? data[0] : null;
       final opcodeName = commandCode != null
           ? MeshCoreOpcodeNames.getCommandName(commandCode)
@@ -137,23 +145,25 @@ class BleCommandSender {
         '  Hex: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
       );
 
-      // Check if the characteristic supports write without response
-      final supportsWriteWithoutResponse =
-          _rxCharacteristic!.properties.writeWithoutResponse;
-      final supportsWrite = _rxCharacteristic!.properties.write;
-
-      if (supportsWriteWithoutResponse) {
-        await _rxCharacteristic!.write(data, withoutResponse: true);
-      } else if (supportsWrite) {
-        await _rxCharacteristic!.write(data, withoutResponse: false);
+      if (_tcpWriteCallback != null) {
+        // TCP transport
+        await _tcpWriteCallback!(data);
       } else {
-        throw Exception('Characteristic does not support write operations');
+        // BLE transport
+        final supportsWriteWithoutResponse =
+            _rxCharacteristic!.properties.writeWithoutResponse;
+        final supportsWrite = _rxCharacteristic!.properties.write;
+
+        if (supportsWriteWithoutResponse) {
+          await _rxCharacteristic!.write(data, withoutResponse: true);
+        } else if (supportsWrite) {
+          await _rxCharacteristic!.write(data, withoutResponse: false);
+        } else {
+          throw Exception('Characteristic does not support write operations');
+        }
       }
 
-      // Log TX packet
       _logPacket(data, PacketDirection.tx, responseCode: commandCode);
-
-      // Increment TX packet counter and trigger activity indicator
       _txPacketCount++;
       onTxActivity?.call();
 

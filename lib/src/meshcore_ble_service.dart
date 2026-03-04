@@ -10,6 +10,7 @@ import 'ble/ble_command_sender.dart';
 import 'ble/ble_response_handler.dart';
 import 'protocol/frame_builder.dart';
 import 'meshcore_constants.dart';
+import 'meshcore_service_base.dart';
 
 /// Callback types for MeshCore events
 typedef OnContactCallback = void Function(Contact contact);
@@ -65,7 +66,7 @@ typedef OnReconnectionAttemptCallback =
 typedef OnRssiUpdateCallback = void Function(int rssi);
 
 /// MeshCore BLE Service - coordinates BLE communication components
-class MeshCoreBleService {
+class MeshCoreBleService extends MeshCoreServiceBase {
   /// App name reported to the device during handshake (CMD_APP_START).
   /// Override with your application's name so the device can identify it.
   final String appName;

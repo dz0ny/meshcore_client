@@ -142,6 +142,9 @@ class BleResponseHandler {
     );
   }
 
+  /// Feed a parsed frame directly (used by non-BLE transports, e.g. TCP).
+  void feedData(List<int> data) => _onDataReceived(data);
+
   /// Handle incoming data from TX characteristic
   void _onDataReceived(List<int> data) {
     try {
