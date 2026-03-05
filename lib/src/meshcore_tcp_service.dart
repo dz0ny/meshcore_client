@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'models/contact.dart';
@@ -19,6 +20,10 @@ import 'meshcore_service_base.dart';
 /// All command methods and callbacks are identical to [MeshCoreBleService]
 /// so [ConnectionProvider] can swap between them transparently.
 class MeshCoreTcpService extends MeshCoreServiceBase {
+  // Keep limits aligned with companion frame/payload constraints.
+  static const int _maxContactMessageBytes = 156;
+  static const int _maxChannelMessageBytes = 127;
+
   final String appName;
 
   Socket? _socket;
@@ -372,7 +377,11 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     int textType = 0,
     int attempt = 0,
   }) {
-    if (text.length > 160) throw ArgumentError('Text message exceeds 160 chars');
+    if (utf8.encode(text).length > _maxContactMessageBytes) {
+      throw ArgumentError(
+        'Text message exceeds $_maxContactMessageBytes UTF-8 bytes',
+      );
+    }
     _responseHandler.setLastContactPublicKey(contactPublicKey);
     return _commandSender.writeData(
       FrameBuilder.buildSendTxtMsg(
@@ -390,7 +399,11 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     required String text,
     int textType = 0,
   }) {
-    if (text.length > 160) throw ArgumentError('Channel message too long');
+    if (utf8.encode(text).length > _maxChannelMessageBytes) {
+      throw ArgumentError(
+        'Channel message exceeds $_maxChannelMessageBytes UTF-8 bytes',
+      );
+    }
     return _commandSender.writeDataAndWaitForAck(
       FrameBuilder.buildSendChannelTxtMsg(
         channelIdx: channelIdx,

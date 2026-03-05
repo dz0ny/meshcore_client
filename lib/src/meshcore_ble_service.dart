@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -67,6 +68,10 @@ typedef OnRssiUpdateCallback = void Function(int rssi);
 
 /// MeshCore BLE Service - coordinates BLE communication components
 class MeshCoreBleService extends MeshCoreServiceBase {
+  // Keep limits aligned with companion frame/payload constraints.
+  static const int _maxContactMessageBytes = 156;
+  static const int _maxChannelMessageBytes = 127;
+
   /// App name reported to the device during handshake (CMD_APP_START).
   /// Override with your application's name so the device can identify it.
   final String appName;
@@ -417,8 +422,10 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     int textType = 0,
     int attempt = 0,
   }) async {
-    if (text.length > 160) {
-      throw ArgumentError('Text message exceeds 160 character limit');
+    if (utf8.encode(text).length > _maxContactMessageBytes) {
+      throw ArgumentError(
+        'Text message exceeds $_maxContactMessageBytes UTF-8 bytes',
+      );
     }
 
     // Track the last contact for auto-recovery if contact not found
@@ -461,8 +468,10 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     required String text,
     int textType = 0,
   }) async {
-    if (text.length > 160) {
-      throw ArgumentError('Channel message too long (max ~160 characters)');
+    if (utf8.encode(text).length > _maxChannelMessageBytes) {
+      throw ArgumentError(
+        'Channel message exceeds $_maxChannelMessageBytes UTF-8 bytes',
+      );
     }
 
     // Wait for generic ACK/ERR from firmware so invalid channel sends

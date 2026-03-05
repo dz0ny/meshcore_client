@@ -37,6 +37,9 @@ class QueuedCommand<T> {
   /// Timestamp when command was enqueued
   final DateTime enqueuedAt;
 
+  /// Response key used in [_pendingResponses], set when command is scheduled.
+  int? responseKey;
+
   QueuedCommand({
     required this.data,
     required this.commandCode,
@@ -64,7 +67,7 @@ class BleCommandQueue {
   // Whether queue is currently processing
   bool _isProcessing = false;
 
-  // Pending responses mapped by command code
+  // Pending responses mapped by response code key
   final Map<int, QueuedCommand> _pendingResponses = {};
 
   // Last command execution timestamp
@@ -131,7 +134,14 @@ class BleCommandQueue {
         debugPrint(
           '⏱️ [CommandQueue] Command 0x${commandCode.toRadixString(16).padLeft(2, '0')} timed out after ${cmdTimeout.inSeconds}s',
         );
-        _pendingResponses.remove(commandCode);
+        _pendingResponses.remove(command.responseKey ?? _responseKeyFor(command));
+        if (!command.completer.isCompleted) {
+          command.completer.completeError(
+            TimeoutException(
+              'Command 0x${commandCode.toRadixString(16).padLeft(2, '0')} timed out',
+            ),
+          );
+        }
         throw TimeoutException(
           'Command 0x${commandCode.toRadixString(16).padLeft(2, '0')} timed out',
         );
@@ -171,11 +181,8 @@ class BleCommandQueue {
 
         // Register for response if needed
         if (command.responseType != CommandResponseType.none) {
-          // ACK commands are completed by RESP_CODE_OK (0x00). RESP_CODE_ERR
-          // is handled via completeCurrentCommandWithError().
-          final responseKey = command.responseType == CommandResponseType.ack
-              ? MeshCoreConstants.respOk
-              : (command.expectedResponseCode ?? command.commandCode);
+          final responseKey = _responseKeyFor(command);
+          command.responseKey = responseKey;
           _pendingResponses[responseKey] = command;
         }
 
@@ -188,17 +195,27 @@ class BleCommandQueue {
         // For fire-and-forget commands, complete immediately
         if (command.responseType == CommandResponseType.none) {
           command.completer.complete(null);
-        }
-
-        // Update last command time
-        _lastCommandTime = DateTime.now();
-
-        // Release lock after minimum delay
-        Future.delayed(const Duration(milliseconds: _minDelayMs), () {
-          if (!_lock.isCompleted) {
-            _lock.complete();
+          // Update last command time
+          _lastCommandTime = DateTime.now();
+          // Release lock after minimum delay
+          Future.delayed(const Duration(milliseconds: _minDelayMs), () {
+            if (!_lock.isCompleted) {
+              _lock.complete();
+            }
+          });
+        } else {
+          // Keep queue serialized for commands that require a response.
+          try {
+            await command.completer.future;
+          } catch (_) {
+            // Errors are propagated to awaiters via the command future.
+          } finally {
+            _lastCommandTime = DateTime.now();
+            if (!_lock.isCompleted) {
+              _lock.complete();
+            }
           }
-        });
+        }
       } catch (e) {
         debugPrint('❌ [CommandQueue] Error processing command: $e');
         if (!command.completer.isCompleted) {
@@ -214,6 +231,15 @@ class BleCommandQueue {
     _isProcessing = false;
     onQueueEmpty?.call();
     debugPrint('✅ [CommandQueue] Queue empty');
+  }
+
+  int _responseKeyFor(QueuedCommand command) {
+    // ACK commands are completed by RESP_CODE_OK (0x00). RESP_CODE_ERR
+    // is handled via completeCurrentCommandWithError().
+    if (command.responseType == CommandResponseType.ack) {
+      return MeshCoreConstants.respOk;
+    }
+    return command.expectedResponseCode ?? command.commandCode;
   }
 
   /// Complete a pending command with response data
