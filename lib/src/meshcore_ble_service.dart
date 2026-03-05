@@ -430,15 +430,22 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
     // Track the last contact for auto-recovery if contact not found
     _responseHandler.setLastContactPublicKey(contactPublicKey);
+    _responseHandler.queuePendingDirectMessageContact(contactPublicKey);
 
-    await _commandSender.writeData(
-      FrameBuilder.buildSendTxtMsg(
-        contactPublicKey: contactPublicKey,
-        text: text,
-        textType: textType,
-        attempt: attempt,
-      ),
-    );
+    try {
+      await _commandSender.writeDataAndWaitForResponse<Map<String, dynamic>>(
+        FrameBuilder.buildSendTxtMsg(
+          contactPublicKey: contactPublicKey,
+          text: text,
+          textType: textType,
+          attempt: attempt,
+        ),
+        MeshCoreConstants.respSent,
+      );
+    } catch (_) {
+      _responseHandler.cancelPendingDirectMessageContact(contactPublicKey);
+      rethrow;
+    }
   }
 
   /// Send flood-mode text message to channel

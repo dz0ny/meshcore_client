@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:crypto/crypto.dart' as crypto;
@@ -113,6 +114,7 @@ class BleResponseHandler {
 
   // Track the last command that was sent, so we can retry if it fails with ERR_CODE_NOT_FOUND
   Uint8List? _lastContactPublicKey;
+  final ListQueue<Uint8List> _pendingDirectMessageContacts = ListQueue();
 
   BleResponseHandler() {
     _rememberChannelSecret(
@@ -375,6 +377,10 @@ class BleResponseHandler {
       final result = FrameParser.parseSentConfirmation(reader);
       if (result.isNotEmpty) {
         debugPrint('  ✅ [Sent] Message sent successfully');
+        final isFloodMode = result['isFloodMode'] as bool;
+        final contactPublicKey = isFloodMode
+            ? null
+            : _dequeuePendingDirectMessageContact();
 
         // Complete any pending command waiting for sent confirmation
         _commandQueue?.completeCommand<Map<String, dynamic>>(
@@ -385,8 +391,8 @@ class BleResponseHandler {
         onMessageSent?.call(
           result['expectedAckTag'] as int,
           result['suggestedTimeout'] as int,
-          result['isFloodMode'] as bool,
-          _lastContactPublicKey,
+          isFloodMode,
+          contactPublicKey,
         );
       }
     } catch (e) {
@@ -1468,7 +1474,9 @@ class BleResponseHandler {
           debugPrint(
             '  ⚠️ [Error] Contact not found in radio - attempting auto-recovery',
           );
-          onContactNotFound?.call(_lastContactPublicKey);
+          onContactNotFound?.call(
+            _dequeuePendingDirectMessageContact() ?? _lastContactPublicKey,
+          );
         }
 
         onError?.call(errorMsg, errorCode: errorCode);
@@ -1480,7 +1488,53 @@ class BleResponseHandler {
 
   /// Track the last contact public key for retry logic
   void setLastContactPublicKey(Uint8List? publicKey) {
-    _lastContactPublicKey = publicKey;
+    if (publicKey == null) {
+      _lastContactPublicKey = null;
+      return;
+    }
+    _lastContactPublicKey = Uint8List.fromList(publicKey);
+  }
+
+  /// Queue a direct-message recipient so RESP_SENT / ERR responses can be
+  /// correlated to the correct contact even when sends overlap.
+  void queuePendingDirectMessageContact(Uint8List publicKey) {
+    final copy = Uint8List.fromList(publicKey);
+    _pendingDirectMessageContacts.addLast(copy);
+    _lastContactPublicKey = copy;
+  }
+
+  /// Remove a queued direct-message recipient after a local send failure or
+  /// timeout to avoid stale correlation state.
+  void cancelPendingDirectMessageContact(Uint8List publicKey) {
+    final remaining = _pendingDirectMessageContacts.where(
+      (candidate) => !_samePublicKey(candidate, publicKey),
+    );
+    _pendingDirectMessageContacts
+      ..clear()
+      ..addAll(remaining);
+    _lastContactPublicKey = _pendingDirectMessageContacts.isEmpty
+        ? null
+        : _pendingDirectMessageContacts.last;
+  }
+
+  Uint8List? _dequeuePendingDirectMessageContact() {
+    if (_pendingDirectMessageContacts.isEmpty) {
+      return _lastContactPublicKey;
+    }
+
+    final contactPublicKey = _pendingDirectMessageContacts.removeFirst();
+    _lastContactPublicKey = _pendingDirectMessageContacts.isEmpty
+        ? null
+        : _pendingDirectMessageContacts.last;
+    return contactPublicKey;
+  }
+
+  bool _samePublicKey(Uint8List left, Uint8List right) {
+    if (left.length != right.length) return false;
+    for (int i = 0; i < left.length; i++) {
+      if (left[i] != right[i]) return false;
+    }
+    return true;
   }
 
   /// Log a packet

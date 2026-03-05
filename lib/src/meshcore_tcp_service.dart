@@ -383,14 +383,21 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
       );
     }
     _responseHandler.setLastContactPublicKey(contactPublicKey);
-    return _commandSender.writeData(
-      FrameBuilder.buildSendTxtMsg(
-        contactPublicKey: contactPublicKey,
-        text: text,
-        textType: textType,
-        attempt: attempt,
-      ),
-    );
+    _responseHandler.queuePendingDirectMessageContact(contactPublicKey);
+    return _commandSender
+        .writeDataAndWaitForResponse<Map<String, dynamic>>(
+          FrameBuilder.buildSendTxtMsg(
+            contactPublicKey: contactPublicKey,
+            text: text,
+            textType: textType,
+            attempt: attempt,
+          ),
+          MeshCoreConstants.respSent,
+        )
+        .catchError((error) {
+          _responseHandler.cancelPendingDirectMessageContact(contactPublicKey);
+          throw error;
+        });
   }
 
   @override
