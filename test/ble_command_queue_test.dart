@@ -93,6 +93,34 @@ void main() {
       expect(queue.pendingResponseCount, 0);
     });
 
+    test('captures responses even if they arrive before command activation', () async {
+      final queue = BleCommandQueue();
+
+      final first = queue.enqueue<void>(
+        data: Uint8List.fromList([0x16]),
+        commandCode: 0x16,
+        responseType: CommandResponseType.data,
+        expectedResponseCode: 0x0D,
+        timeout: const Duration(seconds: 1),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      queue.completeCommand<void>(0x0D, null);
+      await first;
+
+      final second = queue.enqueue<String>(
+        data: Uint8List.fromList([0x01]),
+        commandCode: 0x01,
+        responseType: CommandResponseType.data,
+        expectedResponseCode: MeshCoreConstants.respSelfInfo,
+        timeout: const Duration(seconds: 1),
+      );
+
+      queue.completeCommand<String>(MeshCoreConstants.respSelfInfo, 'self-info');
+
+      await expectLater(second, completion('self-info'));
+      expect(queue.pendingResponseCount, 0);
+    });
+
     test('propagates current-command errors for ACK commands', () async {
       final queue = BleCommandQueue();
 

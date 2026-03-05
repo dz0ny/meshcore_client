@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import '../meshcore_constants.dart';
 
@@ -81,8 +82,8 @@ class BleCommandQueue {
   // Whether queue is currently processing
   bool _isProcessing = false;
 
-  // Pending responses mapped by response code key
-  final Map<int, QueuedCommand> _pendingResponses = {};
+  // Pending responses bucketed by response code key.
+  final Map<int, ListQueue<QueuedCommand>> _pendingResponses = {};
 
   // Last command execution timestamp
   DateTime? _lastCommandTime;
@@ -132,6 +133,12 @@ class BleCommandQueue {
     _queue.add(command);
     onQueueSizeChanged?.call(_queue.length);
 
+    if (command.responseType != CommandResponseType.none) {
+      final responseKey = _responseKeyFor(command);
+      command.responseKey = responseKey;
+      _pendingResponses.putIfAbsent(responseKey, ListQueue.new).addLast(command);
+    }
+
     debugPrint(
       '📋 [CommandQueue] Enqueued command 0x${commandCode.toRadixString(16).padLeft(2, '0')} (queue size: ${_queue.length})',
     );
@@ -148,7 +155,7 @@ class BleCommandQueue {
         debugPrint(
           '⏱️ [CommandQueue] Command 0x${commandCode.toRadixString(16).padLeft(2, '0')} timed out after ${cmdTimeout.inSeconds}s',
         );
-        _pendingResponses.remove(command.responseKey ?? _responseKeyFor(command));
+        _removePendingCommand(command);
         if (!command.completer.isCompleted) {
           command.completer.completeError(
             TimeoutException(
@@ -214,13 +221,6 @@ class BleCommandQueue {
         // Create new lock for next command
         _lock = Completer<void>();
 
-        // Register for response if needed
-        if (command.responseType != CommandResponseType.none) {
-          final responseKey = _responseKeyFor(command);
-          command.responseKey = responseKey;
-          _pendingResponses[responseKey] = command;
-        }
-
         // Execute command (handled by BleCommandSender)
         // The completer will be completed by completeCommand() when response arrives
         debugPrint(
@@ -284,7 +284,7 @@ class BleCommandQueue {
   ///
   /// Called by BleResponseHandler when a response is received
   void completeCommand<T>(int responseCode, T data) {
-    final command = _pendingResponses.remove(responseCode);
+    final command = _popPendingCommand(responseCode);
     if (command != null) {
       debugPrint(
         '✅ [CommandQueue] Completing command 0x${command.commandCode.toRadixString(16).padLeft(2, '0')} with response 0x${responseCode.toRadixString(16).padLeft(2, '0')}',
@@ -303,7 +303,7 @@ class BleCommandQueue {
     String error, {
     int? errorCode,
   }) {
-    final command = _pendingResponses.remove(commandCode);
+    final command = _popPendingCommand(commandCode);
     if (command != null) {
       debugPrint(
         '❌ [CommandQueue] Command 0x${commandCode.toRadixString(16).padLeft(2, '0')} failed: $error (code: $errorCode)',
@@ -323,14 +323,19 @@ class BleCommandQueue {
   /// command is pending at any given moment.
   void completeCurrentCommandWithError(String error, {int? errorCode}) {
     for (final entry in _pendingResponses.entries.toList()) {
-      final command = _pendingResponses.remove(entry.key);
-      if (command != null && !command.completer.isCompleted) {
-        debugPrint(
-          '❌ [CommandQueue] Command 0x${command.commandCode.toRadixString(16).padLeft(2, '0')} failed: $error (code: $errorCode)',
-        );
-        command.completer.completeError(
-          Exception('Command failed: $error (error code: $errorCode)'),
-        );
+      while (entry.value.isNotEmpty) {
+        final command = entry.value.removeFirst();
+        if (!command.completer.isCompleted) {
+          debugPrint(
+            '❌ [CommandQueue] Command 0x${command.commandCode.toRadixString(16).padLeft(2, '0')} failed: $error (code: $errorCode)',
+          );
+          command.completer.completeError(
+            Exception('Command failed: $error (error code: $errorCode)'),
+          );
+        }
+      }
+      if (entry.value.isEmpty) {
+        _pendingResponses.remove(entry.key);
       }
     }
   }
@@ -339,7 +344,8 @@ class BleCommandQueue {
   int get queueSize => _queue.length;
 
   /// Get number of pending responses
-  int get pendingResponseCount => _pendingResponses.length;
+  int get pendingResponseCount =>
+      _pendingResponses.values.fold(0, (sum, bucket) => sum + bucket.length);
 
   /// Check if queue is empty
   bool get isEmpty => _queue.isEmpty;
@@ -354,9 +360,11 @@ class BleCommandQueue {
     );
 
     // Complete all pending commands with error
-    for (final command in _pendingResponses.values) {
-      if (!command.completer.isCompleted) {
-        command.completer.completeError(Exception('Queue cleared'));
+    for (final bucket in _pendingResponses.values) {
+      for (final command in bucket) {
+        if (!command.completer.isCompleted) {
+          command.completer.completeError(Exception('Queue cleared'));
+        }
       }
     }
 
@@ -370,6 +378,26 @@ class BleCommandQueue {
     clear();
     if (!_lock.isCompleted) {
       _lock.complete();
+    }
+  }
+
+  QueuedCommand? _popPendingCommand(int responseCode) {
+    final bucket = _pendingResponses[responseCode];
+    if (bucket == null || bucket.isEmpty) return null;
+    final command = bucket.removeFirst();
+    if (bucket.isEmpty) {
+      _pendingResponses.remove(responseCode);
+    }
+    return command;
+  }
+
+  void _removePendingCommand(QueuedCommand command) {
+    final responseKey = command.responseKey ?? _responseKeyFor(command);
+    final bucket = _pendingResponses[responseKey];
+    if (bucket == null) return;
+    bucket.remove(command);
+    if (bucket.isEmpty) {
+      _pendingResponses.remove(responseKey);
     }
   }
 }
