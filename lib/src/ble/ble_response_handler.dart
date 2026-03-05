@@ -774,10 +774,25 @@ class BleResponseHandler {
       if (packet.payloadType == 0x05) {
         if (txtType == 0) {
           final text = _decodeCString(decrypted, 5);
+          final parsedText = _splitChannelSenderText(text);
           debugPrint('       Text: $text');
+          onMessageReceived?.call(
+            Message(
+              id:
+                  '${DateTime.now().millisecondsSinceEpoch}_logrx_ch${candidate.channelIdx}',
+              messageType: MessageType.channel,
+              channelIdx: candidate.channelIdx,
+              pathLen: packet.path.length,
+              textType: MessageTextType.plain,
+              senderTimestamp: ts,
+              text: parsedText.$2,
+              senderName: parsedText.$1,
+              receivedAt: DateTime.now(),
+            ),
+          );
           _associateDecodedGroupPacket(
             channelIdx: candidate.channelIdx,
-            decodedText: text,
+            decodedText: parsedText.$2,
             rawPacket: packet,
             snrRaw: snrRaw,
             rssiDbm: rssiDbm,
@@ -1004,6 +1019,30 @@ class BleResponseHandler {
       return trimmed.substring(idx + 2).trim();
     }
     return trimmed;
+  }
+
+  (String?, String) _splitChannelSenderText(String text) {
+    final decodedText = text.trim();
+    if (decodedText.isEmpty) return (null, decodedText);
+
+    final colonIndex = decodedText.indexOf(':');
+    if (colonIndex <= 0 ||
+        colonIndex >= decodedText.length - 1 ||
+        colonIndex >= 50) {
+      return (null, decodedText);
+    }
+
+    final potentialSender = decodedText.substring(0, colonIndex);
+    if (RegExp(r'[:\[\]]').hasMatch(potentialSender)) {
+      return (null, decodedText);
+    }
+
+    final offset =
+        (colonIndex + 1 < decodedText.length &&
+            decodedText[colonIndex + 1] == ' ')
+        ? colonIndex + 2
+        : colonIndex + 1;
+    return (potentialSender, decodedText.substring(offset));
   }
 
   /// Simple hash function for packet identification (replaces SHA256)

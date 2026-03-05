@@ -707,7 +707,10 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Get information for a specific channel
   Future<void> getChannel(int channelIdx) async {
-    await _commandSender.writeData(FrameBuilder.buildGetChannel(channelIdx));
+    await _commandSender.writeDataAndWaitForResponse<Map<String, dynamic>>(
+      FrameBuilder.buildGetChannel(channelIdx),
+      MeshCoreConstants.respChannelInfo,
+    );
   }
 
   /// Set the name and secret for a specific channel
@@ -783,8 +786,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     // Channel 0 is implicit and handled separately via configurePublicChannel()
     for (int i = 1; i < maxChannels; i++) {
       await getChannel(i);
-      // Small delay to avoid overwhelming the device
-      await Future.delayed(const Duration(milliseconds: 50));
     }
 
     debugPrint('✅ [Service] Channel sync complete');

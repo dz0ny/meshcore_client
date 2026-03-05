@@ -563,7 +563,10 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
 
   @override
   Future<void> getChannel(int channelIdx) =>
-      _commandSender.writeData(FrameBuilder.buildGetChannel(channelIdx));
+      _commandSender.writeDataAndWaitForResponse<Map<String, dynamic>>(
+        FrameBuilder.buildGetChannel(channelIdx),
+        MeshCoreConstants.respChannelInfo,
+      );
 
   @override
   Future<void> setChannel({
@@ -596,7 +599,6 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   Future<void> syncAllChannels({int maxChannels = 40}) async {
     for (int i = 1; i < maxChannels; i++) {
       await getChannel(i);
-      await Future.delayed(const Duration(milliseconds: 50));
     }
   }
 

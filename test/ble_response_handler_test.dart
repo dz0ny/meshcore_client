@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meshcore_client/src/ble/ble_response_handler.dart';
 import 'package:meshcore_client/src/meshcore_constants.dart';
+import 'package:pointycastle/export.dart';
 
 void main() {
   group('BleResponseHandler', () {
@@ -113,5 +115,100 @@ void main() {
         'RESP payload=36 bytes',
       );
     });
+
+    test('emits received channel message from decrypted LOG_RX_DATA GRP_TXT', () {
+      final handler = BleResponseHandler();
+      final secret = Uint8List.fromList(List<int>.generate(16, (i) => i + 1));
+      MessageRecord? seen;
+
+      handler.onMessageReceived = (message) {
+        seen = MessageRecord(
+          channelIdx: message.channelIdx,
+          senderTimestamp: message.senderTimestamp,
+          text: message.text,
+          senderName: message.senderName,
+        );
+      };
+
+      handler.feedData([
+        MeshCoreConstants.respChannelInfo,
+        0x02,
+        ..._fixedCString('#ops', 32),
+        ...secret,
+      ]);
+
+      final senderTimestamp = 0x01020304;
+      final plain = Uint8List.fromList([
+        0x04,
+        0x03,
+        0x02,
+        0x01,
+        0x00,
+        ...'alice: hello team'.codeUnits,
+        0x00,
+        ...List<int>.filled(32, 0),
+      ]);
+      final paddedPlain = Uint8List.fromList(plain.sublist(0, 32));
+      final encrypted = _aes128EcbEncrypt(secret, paddedPlain);
+      final mac = _packetMac(secret, encrypted);
+      final channelHash = crypto.sha256.convert(secret).bytes.first;
+      final rawPacket = Uint8List.fromList([
+        0x15,
+        0x01,
+        0x55,
+        channelHash,
+        ...mac,
+        ...encrypted,
+      ]);
+
+      handler.feedData([
+        MeshCoreConstants.pushLogRxData,
+        0x10,
+        0x9c,
+        ...rawPacket,
+      ]);
+
+      expect(seen, isNotNull);
+      expect(seen!.channelIdx, 2);
+      expect(seen!.senderTimestamp, senderTimestamp);
+      expect(seen!.senderName, 'alice');
+      expect(seen!.text, 'hello team');
+    });
   });
+}
+
+class MessageRecord {
+  final int? channelIdx;
+  final int senderTimestamp;
+  final String text;
+  final String? senderName;
+
+  MessageRecord({
+    required this.channelIdx,
+    required this.senderTimestamp,
+    required this.text,
+    required this.senderName,
+  });
+}
+
+List<int> _fixedCString(String value, int size) {
+  final bytes = Uint8List(size);
+  final encoded = value.codeUnits;
+  bytes.setRange(0, encoded.length, encoded);
+  return bytes;
+}
+
+Uint8List _aes128EcbEncrypt(Uint8List secret16, Uint8List plain) {
+  final cipher = ECBBlockCipher(AESEngine())..init(true, KeyParameter(secret16));
+  final out = Uint8List(plain.length);
+  for (int i = 0; i < plain.length; i += 16) {
+    cipher.processBlock(plain, i, out, i);
+  }
+  return out;
+}
+
+Uint8List _packetMac(Uint8List secret16, Uint8List encrypted) {
+  final key32 = Uint8List(32)..setRange(0, 16, secret16);
+  final digest = crypto.Hmac(crypto.sha256, key32).convert(encrypted).bytes;
+  return Uint8List.fromList(digest.sublist(0, 2));
 }
