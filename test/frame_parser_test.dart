@@ -30,6 +30,38 @@ void main() {
       expect(message.senderTimestamp, 0x12345678);
     });
 
+    test('decodes SMAZ-prefixed contact messages', () {
+      final payload = Uint8List.fromList([
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, // pubkey prefix
+        0x00, // path len
+        MessageTextType.plain.value,
+        0x78, 0x56, 0x34, 0x12, // timestamp
+        ...'s:AQ=='.codeUnits, // "the"
+      ]);
+
+      final message = FrameParser.parseContactMessage(BufferReader(payload));
+
+      expect(message.messageType, MessageType.contact);
+      expect(message.senderKeyShort, 'aabbccddeeff');
+      expect(message.textType, MessageTextType.plain);
+      expect(message.text, 'the');
+    });
+
+    test('keeps CLI contact messages undecoded', () {
+      final payload = Uint8List.fromList([
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, // pubkey prefix
+        0x00, // path len
+        MessageTextType.cliData.value,
+        0x78, 0x56, 0x34, 0x12, // timestamp
+        ...'s:AQ=='.codeUnits,
+      ]);
+
+      final message = FrameParser.parseContactMessage(BufferReader(payload));
+
+      expect(message.textType, MessageTextType.cliData);
+      expect(message.text, 's:AQ==');
+    });
+
     test('does not treat bracketed payload prefixes as sender names', () {
       final payload = Uint8List.fromList([
         0x01, // channel idx

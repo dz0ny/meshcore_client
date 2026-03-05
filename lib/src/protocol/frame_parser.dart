@@ -130,6 +130,10 @@ class FrameParser {
       text = reader.readString();
     }
 
+    final decodedText = txtType == MessageTextType.cliData
+        ? text
+        : (Smaz.tryDecodePrefixed(text) ?? text);
+
     return Message(
       id: '${DateTime.now().millisecondsSinceEpoch}_${pubKeyPrefix.map((b) => b.toRadixString(16)).join()}',
       messageType: MessageType.contact,
@@ -137,7 +141,7 @@ class FrameParser {
       pathLen: pathLen,
       textType: txtType,
       senderTimestamp: senderTimestamp,
-      text: text,
+      text: decodedText,
       receivedAt: DateTime.now(),
     );
   }

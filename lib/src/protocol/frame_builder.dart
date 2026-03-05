@@ -23,6 +23,7 @@ class FrameBuilder {
     writer.writeByte(1); // appVer
     writer.writeBytes(Uint8List(6)); // reserved
     writer.writeString(appName);
+    writer.writeByte(0);
     return writer.toBytes();
   }
 
@@ -79,6 +80,7 @@ class FrameBuilder {
     writer.writeUInt32LE(DateTime.now().millisecondsSinceEpoch ~/ 1000);
     writer.writeBytes(contactPublicKey.sublist(0, 6));
     writer.writeString(text);
+    writer.writeByte(0);
     return writer.toBytes();
   }
 
@@ -94,6 +96,7 @@ class FrameBuilder {
     writer.writeByte(channelIdx); // 0 for 'public' channel
     writer.writeUInt32LE(DateTime.now().millisecondsSinceEpoch ~/ 1000);
     writer.writeString(text);
+    writer.writeByte(0);
     return writer.toBytes();
   }
 
@@ -266,7 +269,8 @@ class FrameBuilder {
     final writer = BufferWriter();
     writer.writeByte(MeshCoreConstants.cmdSendLogin); // 0x1A
     writer.writeBytes(roomPublicKey); // 32 bytes
-    writer.writeString(password); // Max 15 bytes, null-terminated
+    writer.writeString(password);
+    writer.writeByte(0);
     return writer.toBytes();
   }
 
