@@ -391,7 +391,7 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     int textType = 0,
   }) {
     if (text.length > 160) throw ArgumentError('Channel message too long');
-    return _commandSender.writeData(
+    return _commandSender.writeDataAndWaitForAck(
       FrameBuilder.buildSendChannelTxtMsg(
         channelIdx: channelIdx,
         text: text,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../meshcore_constants.dart';
 
 /// Type of response expected from a command
 enum CommandResponseType {
@@ -170,8 +171,10 @@ class BleCommandQueue {
 
         // Register for response if needed
         if (command.responseType != CommandResponseType.none) {
+          // ACK commands are completed by RESP_CODE_OK (0x00). RESP_CODE_ERR
+          // is handled via completeCurrentCommandWithError().
           final responseKey = command.responseType == CommandResponseType.ack
-              ? command.commandCode
+              ? MeshCoreConstants.respOk
               : (command.expectedResponseCode ?? command.commandCode);
           _pendingResponses[responseKey] = command;
         }

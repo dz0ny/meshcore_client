@@ -456,9 +456,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   ///
   /// Channel messages are ephemeral and use flood routing (no ACKs).
   /// Use channel 0 for the default public channel.
-  ///
-  /// Note: Uses fire-and-forget mode since channel messages don't return
-  /// delivery confirmation (they're broadcast to all nodes).
   Future<void> sendChannelMessage({
     required int channelIdx,
     required String text,
@@ -468,9 +465,9 @@ class MeshCoreBleService extends MeshCoreServiceBase {
       throw ArgumentError('Channel message too long (max ~160 characters)');
     }
 
-    // Channel messages use fire-and-forget (no ACK expected)
-    // The firmware responds with RESP_CODE_OK but we don't wait for it
-    await _commandSender.writeData(
+    // Wait for generic ACK/ERR from firmware so invalid channel sends
+    // (e.g. missing channel slot) are surfaced to callers.
+    await _commandSender.writeDataAndWaitForAck(
       FrameBuilder.buildSendChannelTxtMsg(
         channelIdx: channelIdx,
         text: text,
