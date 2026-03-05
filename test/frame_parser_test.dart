@@ -7,6 +7,29 @@ import 'package:meshcore_client/src/protocol/frame_parser.dart';
 
 void main() {
   group('FrameParser', () {
+    test('parses V3 contact messages with shifted text type values', () {
+      final payload = Uint8List.fromList([
+        0x08, // snr * 4
+        0x00,
+        0x00,
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, // pubkey prefix
+        0x03, // path len
+        MessageTextType.signedPlain.value << 2,
+        0x78, 0x56, 0x34, 0x12, // timestamp
+        0x11, 0x22, 0x33, 0x44, // signed sender prefix
+        ...'signed hello'.codeUnits,
+      ]);
+
+      final message = FrameParser.parseContactMessageV3(BufferReader(payload));
+
+      expect(message.messageType, MessageType.contact);
+      expect(message.senderKeyShort, 'aabbccddeeff');
+      expect(message.pathLen, 3);
+      expect(message.textType, MessageTextType.signedPlain);
+      expect(message.text, 'signed hello');
+      expect(message.senderTimestamp, 0x12345678);
+    });
+
     test('does not treat bracketed payload prefixes as sender names', () {
       final payload = Uint8List.fromList([
         0x01, // channel idx
@@ -58,6 +81,28 @@ void main() {
       expect(message.senderName, 'Bob');
       expect(message.text, 'status ok');
       expect(message.senderTimestamp, 0x12345678);
+    });
+
+    test('parses V3 channel frames without consuming absent path bytes', () {
+      final payload = Uint8List.fromList([
+        0x10, // snr * 4
+        0x00, // flags: no path bytes present
+        0x00, // reserved
+        0x04, // channel idx
+        0x02, // path len metadata
+        MessageTextType.plain.value,
+        0x04, 0x03, 0x02, 0x01, // timestamp
+        ...'plain update'.codeUnits,
+      ]);
+
+      final message = FrameParser.parseChannelMessageV3(BufferReader(payload));
+
+      expect(message.channelIdx, 4);
+      expect(message.pathLen, 2);
+      expect(message.textType, MessageTextType.plain);
+      expect(message.text, 'plain update');
+      expect(message.senderName, isNull);
+      expect(message.senderTimestamp, 0x01020304);
     });
   });
 }

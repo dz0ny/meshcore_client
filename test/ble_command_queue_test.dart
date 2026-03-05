@@ -56,5 +56,58 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 120));
       expect(queue.pendingResponseCount, 0);
     });
+
+    test('completes data commands with the expected response code', () async {
+      final queue = BleCommandQueue();
+
+      final future = queue.enqueue<String>(
+        data: Uint8List.fromList([0x16]),
+        commandCode: 0x16,
+        responseType: CommandResponseType.data,
+        expectedResponseCode: 0x0D,
+        timeout: const Duration(seconds: 1),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      queue.completeCommand<String>(0x0D, 'device-info');
+
+      await expectLater(future, completion('device-info'));
+      expect(queue.pendingResponseCount, 0);
+    });
+
+    test('propagates current-command errors for ACK commands', () async {
+      final queue = BleCommandQueue();
+
+      final future = queue.enqueue<void>(
+        data: Uint8List.fromList([0x03]),
+        commandCode: 0x03,
+        responseType: CommandResponseType.ack,
+        timeout: const Duration(seconds: 1),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      queue.completeCurrentCommandWithError('bad state', errorCode: 4);
+
+      await expectLater(future, throwsA(isA<Exception>()));
+      expect(queue.pendingResponseCount, 0);
+    });
+
+    test('clear fails pending commands and empties queue state', () async {
+      final queue = BleCommandQueue();
+
+      final future = queue.enqueue<void>(
+        data: Uint8List.fromList([0x03]),
+        commandCode: 0x03,
+        responseType: CommandResponseType.ack,
+        timeout: const Duration(seconds: 1),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      queue.clear();
+
+      await expectLater(future, throwsA(isA<Exception>()));
+      expect(queue.queueSize, 0);
+      expect(queue.pendingResponseCount, 0);
+    });
   });
 }
