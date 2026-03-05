@@ -66,5 +66,52 @@ void main() {
       expect(missingContact, orderedEquals(first));
       expect(sentContact, orderedEquals(second));
     });
+
+    test('labels LOG_RX_DATA response packets like meshcore-open', () {
+      final payload = Uint8List.fromList([
+        0xFE,
+        0x5A,
+        0x62,
+        0x88,
+        0xD9,
+        0x89,
+        0xE5,
+        0x07,
+        0xC6,
+        0x21,
+        0x84,
+        0x10,
+        0xA1,
+        0x97,
+        0x38,
+        0x83,
+        0xEF,
+        0xD2,
+        0x5D,
+        0x78,
+        0x60,
+        0xE8,
+        0xB5,
+        0xAA,
+        0x19,
+        0xBA,
+        0x22,
+        0x40,
+        0xFD,
+        0x67,
+        0xA6,
+        0x3B,
+        0xCF,
+        0x69,
+        0x0D,
+        0xE2,
+      ]);
+
+      expect(BleResponseHandler.logRxPayloadTypeLabel(0x01), 'RESP');
+      expect(
+        BleResponseHandler.decodeLogRxPayloadSummary(0x01, payload),
+        'RESP payload=36 bytes',
+      );
+    });
   });
 }

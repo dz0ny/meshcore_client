@@ -597,10 +597,17 @@ class BleResponseHandler {
       if (parsed != null) {
         final payloadType = parsed.payloadType;
         final pathLen = parsed.path.length;
+        final payloadLabel = logRxPayloadTypeLabel(payloadType);
+        final payloadSummary = decodeLogRxPayloadSummary(
+          payloadType,
+          parsed.payload,
+        );
 
         debugPrint(
-          '    Packet type: 0x${payloadType.toRadixString(16).padLeft(2, '0')}',
+          '    Packet type: $payloadLabel '
+          '(0x${payloadType.toRadixString(16).padLeft(2, '0')})',
         );
+        debugPrint('    Packet summary: $payloadSummary');
 
         if (pathLen > 0) {
           final path = parsed.path;
@@ -790,6 +797,82 @@ class BleResponseHandler {
     debugPrint(
       '    🔐 [LogRxData] Could not decrypt channel hash 0x${channelHash.toRadixString(16).padLeft(2, '0')} with ${allCandidates.length} known secrets',
     );
+  }
+
+  @visibleForTesting
+  static String decodeLogRxPayloadSummary(int payloadType, Uint8List payload) {
+    switch (payloadType) {
+      case 0x00:
+        return 'REQ payload=${payload.length} bytes';
+      case 0x01:
+        return 'RESP payload=${payload.length} bytes';
+      case 0x02:
+        return 'TXT payload=${payload.length} bytes';
+      case 0x03:
+        if (payload.length < 4) return 'ACK (short)';
+        final ack = payload
+            .sublist(0, 4)
+            .map((b) => b.toRadixString(16).padLeft(2, '0'))
+            .join();
+        return 'ACK crc=$ack';
+      case 0x04:
+        return 'ADVERT payload=${payload.length} bytes';
+      case 0x05:
+        if (payload.length < 3) return 'GRP_TXT (short)';
+        final channelHash = payload[0].toRadixString(16).padLeft(2, '0');
+        final mac = payload
+            .sublist(1, 3)
+            .map((b) => b.toRadixString(16).padLeft(2, '0'))
+            .join();
+        final cipherLen = payload.length - 3;
+        return 'GRP_TXT hash=$channelHash mac=$mac cipher=$cipherLen';
+      case 0x06:
+        return 'GRP_DATA payload=${payload.length} bytes';
+      case 0x07:
+        return 'ANON_REQ payload=${payload.length} bytes';
+      case 0x08:
+        return 'PATH payload=${payload.length} bytes';
+      case 0x09:
+        return 'TRACE payload=${payload.length} bytes';
+      case 0x0A:
+        return 'MULTIPART payload=${payload.length} bytes';
+      case 0x0B:
+        return 'CONTROL payload=${payload.length} bytes';
+      default:
+        return 'TYPE_$payloadType payload=${payload.length} bytes';
+    }
+  }
+
+  @visibleForTesting
+  static String logRxPayloadTypeLabel(int payloadType) {
+    switch (payloadType) {
+      case 0x00:
+        return 'REQ';
+      case 0x01:
+        return 'RESP';
+      case 0x02:
+        return 'TXT';
+      case 0x03:
+        return 'ACK';
+      case 0x04:
+        return 'ADVERT';
+      case 0x05:
+        return 'GRP_TXT';
+      case 0x06:
+        return 'GRP_DATA';
+      case 0x07:
+        return 'ANON_REQ';
+      case 0x08:
+        return 'PATH';
+      case 0x09:
+        return 'TRACE';
+      case 0x0A:
+        return 'MULTIPART';
+      case 0x0B:
+        return 'CONTROL';
+      default:
+        return 'TYPE_$payloadType';
+    }
   }
 
   bool _isValidMac(
