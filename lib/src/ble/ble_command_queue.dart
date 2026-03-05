@@ -40,6 +40,9 @@ class QueuedCommand<T> {
   /// Response key used in [_pendingResponses], set when command is scheduled.
   int? responseKey;
 
+  /// Completes when the command becomes the active command allowed to send.
+  final Completer<void> activated;
+
   QueuedCommand({
     required this.data,
     required this.commandCode,
@@ -47,7 +50,18 @@ class QueuedCommand<T> {
     this.expectedResponseCode,
     required this.completer,
     required this.timeout,
-  }) : enqueuedAt = DateTime.now();
+  }) : enqueuedAt = DateTime.now(),
+       activated = Completer<void>();
+}
+
+class EnqueuedCommandHandle<T> {
+  final Future<T> completion;
+  final Future<void> active;
+
+  EnqueuedCommandHandle({
+    required this.completion,
+    required this.active,
+  });
 }
 
 /// BLE command queue with mutex lock and inter-command delays
@@ -90,13 +104,13 @@ class BleCommandQueue {
   ///
   /// Returns a Future that completes when the command receives its response
   /// or throws TimeoutException if timeout expires.
-  Future<T> enqueue<T>({
+  EnqueuedCommandHandle<T> enqueueCommand<T>({
     required Uint8List data,
     required int commandCode,
     required CommandResponseType responseType,
     int? expectedResponseCode,
     Duration? timeout,
-  }) async {
+  }) {
     // Determine timeout based on response type
     final cmdTimeout =
         timeout ??
@@ -128,7 +142,7 @@ class BleCommandQueue {
     }
 
     // Wait for command to complete or timeout
-    return command.completer.future.timeout(
+    final completion = command.completer.future.timeout(
       cmdTimeout,
       onTimeout: () {
         debugPrint(
@@ -147,6 +161,27 @@ class BleCommandQueue {
         );
       },
     );
+
+    return EnqueuedCommandHandle<T>(
+      completion: completion,
+      active: command.activated.future,
+    );
+  }
+
+  Future<T> enqueue<T>({
+    required Uint8List data,
+    required int commandCode,
+    required CommandResponseType responseType,
+    int? expectedResponseCode,
+    Duration? timeout,
+  }) {
+    return enqueueCommand<T>(
+      data: data,
+      commandCode: commandCode,
+      responseType: responseType,
+      expectedResponseCode: expectedResponseCode,
+      timeout: timeout,
+    ).completion;
   }
 
   /// Process the command queue
@@ -191,6 +226,9 @@ class BleCommandQueue {
         debugPrint(
           '📤 [CommandQueue] Executing command 0x${command.commandCode.toRadixString(16).padLeft(2, '0')}',
         );
+        if (!command.activated.isCompleted) {
+          command.activated.complete();
+        }
 
         // For fire-and-forget commands, complete immediately
         if (command.responseType == CommandResponseType.none) {

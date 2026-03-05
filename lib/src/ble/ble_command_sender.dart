@@ -53,11 +53,12 @@ class BleCommandSender {
     final commandCode = data.isNotEmpty ? data[0] : 0;
 
     // Enqueue the command (fire-and-forget)
-    await _commandQueue.enqueue<void>(
+    final handle = _commandQueue.enqueueCommand<void>(
       data: data,
       commandCode: commandCode,
       responseType: CommandResponseType.none,
     );
+    await handle.active;
 
     // Actually send the data
     await _sendToDevice(data);
@@ -78,17 +79,18 @@ class BleCommandSender {
 
     // Enqueue command but don't await yet — data must be sent to the device
     // before it can respond with an ACK. Awaiting before send would deadlock.
-    final ackFuture = _commandQueue.enqueue<void>(
+    final handle = _commandQueue.enqueueCommand<void>(
       data: data,
       commandCode: commandCode,
       responseType: CommandResponseType.ack,
     );
+    await handle.active;
 
     // Actually send the data
     await _sendToDevice(data);
 
     // Now wait for the ACK response
-    return ackFuture;
+    return handle.completion;
   }
 
   /// Write data and wait for specific response
@@ -110,18 +112,19 @@ class BleCommandSender {
     final commandCode = data.isNotEmpty ? data[0] : 0;
 
     // Enqueue the command (wait for specific response)
-    final responseFuture = _commandQueue.enqueue<T>(
+    final handle = _commandQueue.enqueueCommand<T>(
       data: data,
       commandCode: commandCode,
       responseType: CommandResponseType.data,
       expectedResponseCode: expectedResponseCode,
     );
+    await handle.active;
 
     // Actually send the data
     await _sendToDevice(data);
 
     // Wait for response
-    return responseFuture;
+    return handle.completion;
   }
 
   /// Internal method to actually send data to the device (BLE or TCP)
