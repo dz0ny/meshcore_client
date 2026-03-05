@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../models/contact.dart';
 import '../models/message.dart';
 import '../buffer_reader.dart';
+import '../helpers/smaz.dart';
 import '../meshcore_constants.dart';
 
 /// Parses incoming BLE frames from the MeshCore device
@@ -73,8 +74,39 @@ class FrameParser {
   /// V3 prepends 3 bytes: [snr_scaled(int8)][reserved][reserved]
   static Message parseChannelMessageV3(BufferReader reader) {
     reader.readInt8(); // snr scaled by 4 (ignored for now)
-    reader.readBytes(2); // reserved
-    return parseChannelMessage(reader);
+    final flags = reader.readByte();
+    reader.readByte(); // reserved
+
+    final channelIdx = reader.readByte();
+    final pathLen = reader.readInt8();
+
+    final canFitPath = pathLen > 0 && reader.remainingBytesCount >= pathLen + 5;
+    if (canFitPath) {
+      final nextByte = reader.peekByte();
+      final hasValidTxtType = _parseTextType(nextByte) != null;
+      final hasPathBytesFlag = (flags & 0x01) != 0;
+      if (hasPathBytesFlag || !hasValidTxtType) {
+        reader.readBytes(pathLen);
+      }
+    }
+
+    final txtTypeByte = reader.readByte();
+    final txtType = _parseTextType(txtTypeByte) ?? MessageTextType.plain;
+    final senderTimestamp = reader.readUInt32LE();
+    final text = reader.hasRemaining ? reader.readString() : '';
+    final parsed = _decodeChannelText(text, parseSender: true);
+
+    return Message(
+      id: '${DateTime.now().millisecondsSinceEpoch}_ch$channelIdx',
+      messageType: MessageType.channel,
+      channelIdx: channelIdx,
+      pathLen: pathLen,
+      textType: txtType,
+      senderTimestamp: senderTimestamp,
+      text: parsed.$2,
+      senderName: parsed.$1,
+      receivedAt: DateTime.now(),
+    );
   }
 
   /// Parse ContactMessage response
@@ -82,7 +114,7 @@ class FrameParser {
     final pubKeyPrefix = reader.readBytes(6);
     final pathLen = reader.readByte();
     final txtTypeByte = reader.readByte();
-    final txtType = MessageTextType.fromValue(txtTypeByte);
+    final txtType = _parseTextType(txtTypeByte) ?? MessageTextType.plain;
     final senderTimestamp = reader.readUInt32LE();
 
     String text;
@@ -115,7 +147,7 @@ class FrameParser {
     final channelIdx = reader.readByte(); // unsigned 0-255, not signed
     final pathLen = reader.readByte();
     final txtTypeByte = reader.readByte();
-    final txtType = MessageTextType.fromValue(txtTypeByte);
+    final txtType = _parseTextType(txtTypeByte) ?? MessageTextType.plain;
     final senderTimestamp = reader.readUInt32LE();
 
     String text;
@@ -130,15 +162,9 @@ class FrameParser {
       text = reader.readString();
     }
 
-    // Parse sender name from channel message format: "<sender_name>: <actual_message>"
-    String? senderName;
-    String actualMessage = text;
-
-    if (text.contains(': ')) {
-      final colonIndex = text.indexOf(': ');
-      senderName = text.substring(0, colonIndex);
-      actualMessage = text.substring(colonIndex + 2); // Skip ": "
-    }
+    final parsed = _decodeChannelText(text, parseSender: true);
+    final senderName = parsed.$1;
+    final actualMessage = parsed.$2;
 
     return Message(
       id: '${DateTime.now().millisecondsSinceEpoch}_ch$channelIdx',
@@ -151,6 +177,41 @@ class FrameParser {
       senderName: senderName, // Store extracted sender name
       receivedAt: DateTime.now(),
     );
+  }
+
+  static MessageTextType? _parseTextType(int rawValue) {
+    final direct = MessageTextType.values.where((t) => t.value == rawValue);
+    if (direct.isNotEmpty) return direct.first;
+
+    final shifted = rawValue >> 2;
+    final shiftedMatch = MessageTextType.values.where((t) => t.value == shifted);
+    if (shiftedMatch.isNotEmpty) return shiftedMatch.first;
+
+    return null;
+  }
+
+  static (String?, String) _decodeChannelText(
+    String text, {
+    required bool parseSender,
+  }) {
+    final decodedText = Smaz.tryDecodePrefixed(text) ?? text;
+    if (!parseSender) return (null, decodedText);
+
+    final colonIndex = decodedText.indexOf(':');
+    if (colonIndex <= 0 || colonIndex >= decodedText.length - 1 || colonIndex >= 50) {
+      return (null, decodedText);
+    }
+
+    final potentialSender = decodedText.substring(0, colonIndex);
+    if (RegExp(r'[:\[\]]').hasMatch(potentialSender)) {
+      return (null, decodedText);
+    }
+
+    final offset =
+        (colonIndex + 1 < decodedText.length && decodedText[colonIndex + 1] == ' ')
+        ? colonIndex + 2
+        : colonIndex + 1;
+    return (potentialSender, decodedText.substring(offset));
   }
 
   /// Parse TelemetryResponse push
