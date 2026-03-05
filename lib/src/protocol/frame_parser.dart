@@ -197,21 +197,23 @@ class FrameParser {
     final decodedText = Smaz.tryDecodePrefixed(text) ?? text;
     if (!parseSender) return (null, decodedText);
 
-    final colonIndex = decodedText.indexOf(':');
-    if (colonIndex <= 0 || colonIndex >= decodedText.length - 1 || colonIndex >= 50) {
+    final colonIndex = text.indexOf(':');
+    if (colonIndex <= 0 || colonIndex >= text.length - 1 || colonIndex >= 50) {
       return (null, decodedText);
     }
 
-    final potentialSender = decodedText.substring(0, colonIndex);
+    final potentialSender = text.substring(0, colonIndex);
     if (RegExp(r'[:\[\]]').hasMatch(potentialSender)) {
       return (null, decodedText);
     }
 
     final offset =
-        (colonIndex + 1 < decodedText.length && decodedText[colonIndex + 1] == ' ')
+        (colonIndex + 1 < text.length && text[colonIndex + 1] == ' ')
         ? colonIndex + 2
         : colonIndex + 1;
-    return (potentialSender, decodedText.substring(offset));
+    final body = text.substring(offset);
+    final decodedBody = Smaz.tryDecodePrefixed(body) ?? body;
+    return (potentialSender, decodedBody);
   }
 
   /// Parse TelemetryResponse push
