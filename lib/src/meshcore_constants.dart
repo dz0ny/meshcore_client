@@ -4,8 +4,7 @@ class MeshCoreConstants {
   static const int supportedCompanionProtocolVersion = 3;
 
   // BLE Service and Characteristic UUIDs
-  static const String bleServiceUuid =
-      '6E400001-B5A3-F393-E0A9-E50E24DCCA9E';
+  static const String bleServiceUuid = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E';
   static const String bleCharacteristicRxUuid =
       '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'; // Write
   static const String bleCharacteristicTxUuid =
@@ -65,6 +64,7 @@ class MeshCoreConstants {
   static const int cmdSetAutoaddConfig = 58;
   static const int cmdGetAutoaddConfig = 59;
   static const int cmdGetAllowedRepeatFreq = 60;
+  static const int cmdScanSpectrum = 62;
 
   // Response Codes (Device -> App)
   static const int respOk = 0;
@@ -74,8 +74,8 @@ class MeshCoreConstants {
   static const int respEndOfContacts = 4;
   static const int respSelfInfo = 5;
   static const int respSent = 6;
-  static const int respContactMsgRecv = 7;   // firmware ver < 3
-  static const int respChannelMsgRecv = 8;   // firmware ver < 3
+  static const int respContactMsgRecv = 7; // firmware ver < 3
+  static const int respChannelMsgRecv = 8; // firmware ver < 3
   static const int respCurrTime = 9;
   static const int respNoMoreMessages = 10;
   static const int respExportContact = 11;
@@ -83,8 +83,10 @@ class MeshCoreConstants {
   static const int respDeviceInfo = 13;
   static const int respPrivateKey = 14;
   static const int respDisabled = 15;
-  static const int respContactMsgRecvV3 = 16; // firmware ver >= 3 (adds SNR header)
-  static const int respChannelMsgRecvV3 = 17; // firmware ver >= 3 (adds SNR header)
+  static const int respContactMsgRecvV3 =
+      16; // firmware ver >= 3 (adds SNR header)
+  static const int respChannelMsgRecvV3 =
+      17; // firmware ver >= 3 (adds SNR header)
   static const int respChannelInfo = 18;
   static const int respSignStart = 19;
   static const int respSignature = 20;
@@ -94,6 +96,7 @@ class MeshCoreConstants {
   static const int respStats = 24; // v8+
   static const int respAutoaddConfig = 25;
   static const int respAllowedRepeatFreq = 26;
+  static const int respSpectrumScan = 27;
 
   // Push Codes (Device -> App, unsolicited)
   static const int pushAdvert = 0x80;
@@ -111,8 +114,9 @@ class MeshCoreConstants {
   static const int pushBinaryResponse = 0x8C;
   static const int pushPathDiscoveryResponse = 0x8D;
   static const int pushControlData = 0x8E; // v8+
-  static const int pushContactDeleted = 0x8F; // contact overwritten when contacts full
-  static const int pushContactsFull = 0x90;   // contacts storage is full
+  static const int pushContactDeleted =
+      0x8F; // contact overwritten when contacts full
+  static const int pushContactsFull = 0x90; // contacts storage is full
 
   // Stats sub-types for cmdGetStats
   static const int statsTypeCore = 0;
@@ -154,8 +158,22 @@ class MeshCoreConstants {
   // Base64: izOH6cXN6mrJ5e26oRXNcg==
   // Source: https://github.com/meshcore-dev/MeshCore/blob/main/docs/faq.md
   static const List<int> defaultPublicChannelSecret = [
-    0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
-    0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72,
+    0x8b,
+    0x33,
+    0x87,
+    0xe9,
+    0xc5,
+    0xcd,
+    0xea,
+    0x6a,
+    0xc9,
+    0xe5,
+    0xed,
+    0xba,
+    0xa1,
+    0x15,
+    0xcd,
+    0x72,
   ];
 
   // Cayenne LPP Data Types

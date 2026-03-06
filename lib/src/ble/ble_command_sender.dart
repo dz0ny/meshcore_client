@@ -103,8 +103,9 @@ class BleCommandSender {
   /// - CMD_GET_CONTACTS → RESP_CODE_CONTACTS_START
   Future<T> writeDataAndWaitForResponse<T>(
     Uint8List data,
-    int expectedResponseCode,
-  ) async {
+    int expectedResponseCode, {
+    Duration? timeout,
+  }) async {
     if (!_isReady) {
       throw Exception('Not connected');
     }
@@ -117,6 +118,7 @@ class BleCommandSender {
       commandCode: commandCode,
       responseType: CommandResponseType.data,
       expectedResponseCode: expectedResponseCode,
+      timeout: timeout,
     );
     await handle.active;
 

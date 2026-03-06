@@ -22,6 +22,7 @@ export 'src/models/contact_telemetry.dart';
 export 'src/models/ble_packet_log.dart';
 export 'src/models/message.dart';
 export 'src/models/sent_message_tracker.dart';
+export 'src/models/spectrum_scan.dart';
 
 // Protocol frame parsing / building
 export 'src/protocol/frame_parser.dart';

@@ -1,8 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'models/contact.dart';
 import 'models/ble_packet_log.dart';
+import 'models/spectrum_scan.dart';
 import 'ble/ble_response_handler.dart';
-import 'ble/ble_connection_manager.dart' show OnConnectionStateCallback, OnReconnectionAttemptCallback, OnRssiUpdateCallback;
+import 'ble/ble_connection_manager.dart'
+    show
+        OnConnectionStateCallback,
+        OnReconnectionAttemptCallback,
+        OnRssiUpdateCallback;
 
 /// Abstract base for both BLE and TCP MeshCore service implementations.
 ///
@@ -52,6 +57,7 @@ abstract class MeshCoreServiceBase {
   int get rxPacketCount;
   int get txPacketCount;
   List<BlePacketLog> get packetLogs;
+  bool get isSpectrumScanActive;
 
   // ── Commands ───────────────────────────────────────────────────────────────
 
@@ -115,6 +121,14 @@ abstract class MeshCoreServiceBase {
   });
 
   Future<void> getAllowedRepeatFreq();
+  Future<SpectrumScanResult> scanSpectrum({
+    required int startFrequencyKhz,
+    required int stopFrequencyKhz,
+    required int bandwidthKhz,
+    required int stepKhz,
+    required int dwellMs,
+    required int thresholdDb,
+  });
   Future<void> setTxPower(int powerDbm);
   Future<void> setOtherParams({
     required int manualAddContacts,
@@ -143,6 +157,7 @@ abstract class MeshCoreServiceBase {
 
   void clearPacketLogs();
   void resetCounters();
+  void setSpectrumScanActive(bool active);
 
   void dispose();
 }

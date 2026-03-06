@@ -10,6 +10,7 @@ import '../models/contact.dart';
 import '../models/message.dart';
 import '../models/ble_packet_log.dart';
 import '../models/sent_message_tracker.dart';
+import '../models/spectrum_scan.dart';
 import '../buffer_reader.dart';
 import '../meshcore_constants.dart';
 import '../meshcore_opcode_names.dart';
@@ -283,6 +284,10 @@ class BleResponseHandler {
         case MeshCoreConstants.respAllowedRepeatFreq:
           debugPrint('  → Handling AllowedRepeatFreq');
           _handleAllowedRepeatFreq(reader);
+          break;
+        case MeshCoreConstants.respSpectrumScan:
+          debugPrint('  → Handling SpectrumScan');
+          _handleSpectrumScan(reader);
           break;
         case MeshCoreConstants.respNoMoreMessages:
           debugPrint('  → Response: No More Messages');
@@ -778,8 +783,7 @@ class BleResponseHandler {
           debugPrint('       Text: $text');
           onMessageReceived?.call(
             Message(
-              id:
-                  '${DateTime.now().millisecondsSinceEpoch}_logrx_ch${candidate.channelIdx}',
+              id: '${DateTime.now().millisecondsSinceEpoch}_logrx_ch${candidate.channelIdx}',
               messageType: MessageType.channel,
               channelIdx: candidate.channelIdx,
               pathLen: packet.path.length,
@@ -1571,6 +1575,23 @@ class BleResponseHandler {
     } catch (e) {
       debugPrint('  ❌ [AllowedRepeatFreq] Parsing error: $e');
       onError?.call('AllowedRepeatFreq parsing error: $e');
+    }
+  }
+
+  void _handleSpectrumScan(BufferReader reader) {
+    try {
+      final result = FrameParser.parseSpectrumScan(reader);
+      debugPrint('  ✅ [SpectrumScan] ${result.candidates.length} candidate(s)');
+      _commandQueue?.completeCommand<SpectrumScanResult>(
+        MeshCoreConstants.respSpectrumScan,
+        result,
+      );
+    } catch (e) {
+      debugPrint('  ❌ [SpectrumScan] Parsing error: $e');
+      onError?.call('SpectrumScan parsing error: $e');
+      _commandQueue?.completeCurrentCommandWithError(
+        'SpectrumScan parsing error: $e',
+      );
     }
   }
 

@@ -237,6 +237,25 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  static Uint8List buildScanSpectrum({
+    required int startFrequencyKhz,
+    required int stopFrequencyKhz,
+    required int bandwidthKhz,
+    required int stepKhz,
+    required int dwellMs,
+    required int thresholdDb,
+  }) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdScanSpectrum);
+    writer.writeUInt32LE(startFrequencyKhz);
+    writer.writeUInt32LE(stopFrequencyKhz);
+    writer.writeUInt32LE(bandwidthKhz);
+    writer.writeUInt32LE(stepKhz);
+    writer.writeUInt16LE(dwellMs);
+    writer.writeByte(thresholdDb);
+    return writer.toBytes();
+  }
+
   /// Build SetTxPower command
   static Uint8List buildSetTxPower(int powerDbm) {
     final writer = BufferWriter();

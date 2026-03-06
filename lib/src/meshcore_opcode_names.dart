@@ -111,6 +111,8 @@ class MeshCoreOpcodeNames {
         return 'GET_AUTOADD_CONFIG';
       case MeshCoreConstants.cmdGetAllowedRepeatFreq:
         return 'GET_ALLOWED_REPEAT_FREQ';
+      case MeshCoreConstants.cmdScanSpectrum:
+        return 'SCAN_SPECTRUM';
       default:
         return 'CMD_UNKNOWN';
     }
@@ -173,6 +175,8 @@ class MeshCoreOpcodeNames {
         return 'AUTOADD_CONFIG';
       case MeshCoreConstants.respAllowedRepeatFreq:
         return 'ALLOWED_REPEAT_FREQ';
+      case MeshCoreConstants.respSpectrumScan:
+        return 'SPECTRUM_SCAN';
       default:
         return 'RESP_UNKNOWN';
     }
