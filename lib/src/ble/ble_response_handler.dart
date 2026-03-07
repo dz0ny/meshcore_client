@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:io' show Platform;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -297,10 +296,8 @@ class BleResponseHandler {
           debugPrint('  → Path discovery response (not yet handled)');
           break;
         case MeshCoreConstants.pushRawData:
-          if (Platform.isIOS || Platform.isMacOS) {
-            debugPrint('  → Handling RawData push');
-            _handleRawData(reader);
-          }
+          debugPrint('  → Handling RawData push');
+          _handleRawData(reader);
           break;
         case MeshCoreConstants.pushControlData:
           debugPrint('  → Control data push (not yet handled)');

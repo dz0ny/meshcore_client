@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'models/contact.dart';
@@ -267,11 +266,9 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     _responseHandler.onAllowedRepeatFreqReceived = (ranges) {
       onAllowedRepeatFreqReceived?.call(ranges);
     };
-    if (Platform.isIOS || Platform.isMacOS) {
-      _responseHandler.onRawDataReceived = (payload, snrRaw, rssiDbm) {
-        onRawDataReceived?.call(payload, snrRaw, rssiDbm);
-      };
-    }
+    _responseHandler.onRawDataReceived = (payload, snrRaw, rssiDbm) {
+      onRawDataReceived?.call(payload, snrRaw, rssiDbm);
+    };
     _responseHandler.onRxActivity = () {
       onRxActivity?.call();
     };
@@ -521,7 +518,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     );
   }
 
-  /// Send a raw binary voice packet to a direct contact (iOS/macOS only).
+  /// Send a raw binary packet to a direct contact.
   ///
   /// Uses [cmdSendRawData] (25) which sends binary payload over PAYLOAD_TYPE_RAW_CUSTOM.
   /// The receiver gets a [pushRawData] (0x84) push notification with the raw bytes.
@@ -535,7 +532,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     required Uint8List contactPath,
     required Uint8List payload,
   }) async {
-    if (!Platform.isIOS && !Platform.isMacOS) return;
     await _commandSender.writeData(
       FrameBuilder.buildSendRawData(
         pathLen: contactPathLen,
