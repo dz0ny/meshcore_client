@@ -65,11 +65,10 @@ class EnqueuedCommandHandle<T> {
   });
 }
 
-/// BLE command queue with mutex lock and inter-command delays
+/// BLE command queue with serialized command execution
 ///
 /// Ensures that:
 /// - Only one command executes at a time
-/// - 100ms delay between all commands
 /// - Commands can wait for ACK or specific responses
 /// - Timeouts are enforced
 class BleCommandQueue {
@@ -84,12 +83,6 @@ class BleCommandQueue {
 
   // Pending responses bucketed by response code key.
   final Map<int, ListQueue<QueuedCommand>> _pendingResponses = {};
-
-  // Last command execution timestamp
-  DateTime? _lastCommandTime;
-
-  // Minimum delay between commands (milliseconds)
-  static const int _minDelayMs = 100;
 
   // Callbacks
   VoidCallback? onQueueEmpty;
@@ -205,19 +198,6 @@ class BleCommandQueue {
       onQueueSizeChanged?.call(_queue.length);
 
       try {
-        // Enforce minimum delay between commands
-        if (_lastCommandTime != null) {
-          final elapsed = DateTime.now().difference(_lastCommandTime!);
-          final remainingDelay = _minDelayMs - elapsed.inMilliseconds;
-
-          if (remainingDelay > 0) {
-            debugPrint(
-              '⏸️ [CommandQueue] Waiting ${remainingDelay}ms before next command',
-            );
-            await Future.delayed(Duration(milliseconds: remainingDelay));
-          }
-        }
-
         // Create new lock for next command
         _lock = Completer<void>();
 
@@ -233,14 +213,9 @@ class BleCommandQueue {
         // For fire-and-forget commands, complete immediately
         if (command.responseType == CommandResponseType.none) {
           command.completer.complete(null);
-          // Update last command time
-          _lastCommandTime = DateTime.now();
-          // Release lock after minimum delay
-          Future.delayed(const Duration(milliseconds: _minDelayMs), () {
-            if (!_lock.isCompleted) {
-              _lock.complete();
-            }
-          });
+          if (!_lock.isCompleted) {
+            _lock.complete();
+          }
         } else {
           // Keep queue serialized for commands that require a response.
           try {
@@ -248,7 +223,6 @@ class BleCommandQueue {
           } catch (_) {
             // Errors are propagated to awaiters via the command future.
           } finally {
-            _lastCommandTime = DateTime.now();
             if (!_lock.isCompleted) {
               _lock.complete();
             }
