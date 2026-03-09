@@ -434,6 +434,8 @@ class BleConnectionManager {
           }
         } catch (e) {
           debugPrint('⚠️ [BLE] Failed to read RSSI: $e');
+          timer.cancel();
+          _rssiTimer = null;
         }
       }
     });
