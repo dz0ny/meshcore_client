@@ -66,10 +66,18 @@ class BleConnectionManager {
       debugPrint('  Service UUID: ${MeshCoreConstants.bleServiceUuid}');
       debugPrint('  Timeout: ${timeout.inSeconds}s');
 
-      await FlutterBluePlus.startScan(
-        timeout: timeout,
-        withServices: [Guid(MeshCoreConstants.bleServiceUuid)],
-      );
+      if (kIsWeb) {
+        await FlutterBluePlus.startScan(
+          timeout: timeout,
+          withKeywords: const ['MeshCore-', 'Whisper-'],
+          webOptionalServices: [Guid(MeshCoreConstants.bleServiceUuid)],
+        );
+      } else {
+        await FlutterBluePlus.startScan(
+          timeout: timeout,
+          withServices: [Guid(MeshCoreConstants.bleServiceUuid)],
+        );
+      }
       debugPrint('✅ [BLE] Scan started successfully');
 
       int deviceCount = 0;
@@ -123,6 +131,9 @@ class BleConnectionManager {
         '🔵 [BLE] Starting connection to device: ${device.platformName} (${device.remoteId})',
       );
       _device = device;
+
+      debugPrint('🔵 [BLE] Stopping any active scan before connect...');
+      await FlutterBluePlus.stopScan();
 
       // Connect to device
       debugPrint('🔵 [BLE] Calling device.connect() with 15s timeout...');
@@ -193,20 +204,32 @@ class BleConnectionManager {
 
       // Enable notifications on TX characteristic
       debugPrint('🔵 [BLE] Enabling notifications on TX characteristic...');
-      if (kIsWeb) {
-        await FlutterBluePlusPlatform.instance.setNotifyValue(
-          BmSetNotifyValueRequest(
-            remoteId: _txCharacteristic!.remoteId,
-            primaryServiceUuid: _txCharacteristic!.primaryServiceUuid,
-            serviceUuid: _txCharacteristic!.serviceUuid,
-            characteristicUuid: _txCharacteristic!.characteristicUuid,
-            instanceId: _txCharacteristic!.instanceId,
-            forceIndications: false,
-            enable: true,
-          ),
-        );
-      } else {
-        await _txCharacteristic!.setNotifyValue(true);
+      bool notifySet = false;
+      for (int attempt = 0; attempt < 3 && !notifySet; attempt++) {
+        try {
+          if (attempt > 0) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+          }
+          if (kIsWeb) {
+            await FlutterBluePlusPlatform.instance.setNotifyValue(
+              BmSetNotifyValueRequest(
+                remoteId: _txCharacteristic!.remoteId,
+                primaryServiceUuid: _txCharacteristic!.primaryServiceUuid,
+                serviceUuid: _txCharacteristic!.serviceUuid,
+                characteristicUuid: _txCharacteristic!.characteristicUuid,
+                instanceId: _txCharacteristic!.instanceId,
+                forceIndications: false,
+                enable: true,
+              ),
+            );
+          } else {
+            await _txCharacteristic!.setNotifyValue(true);
+          }
+          notifySet = true;
+        } catch (e) {
+          debugPrint('⚠️ [BLE] setNotifyValue attempt ${attempt + 1}/3 failed: $e');
+          if (attempt == 2) rethrow;
+        }
       }
       debugPrint('✅ [BLE] Notifications enabled');
 
@@ -393,6 +416,11 @@ class BleConnectionManager {
 
   /// Start monitoring RSSI in the background
   void _startRssiMonitoring() {
+    if (kIsWeb) {
+      debugPrint('📡 [BLE] RSSI monitoring not supported on web; skipping');
+      return;
+    }
+
     debugPrint('📡 [BLE] Starting RSSI monitoring (every 5 seconds)');
     _stopRssiMonitoring(); // Cancel any existing timer
 

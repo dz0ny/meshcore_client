@@ -87,6 +87,9 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   Timer? _keepaliveTimer;
   static const Duration _keepaliveInterval = Duration(seconds: 20);
   bool _isSpectrumScanActive = false;
+  bool _isSessionReady = false;
+  Completer<Map<String, dynamic>>? _pendingDeviceInfoCompleter;
+  Completer<Map<String, dynamic>>? _pendingSelfInfoCompleter;
 
   // Event callbacks
   OnConnectionStateCallback? onConnectionStateChanged;
@@ -131,10 +134,13 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   void _setupCallbacks() {
     // Connection manager callbacks
     _connectionManager.onConnectionStateChanged = (isConnected) {
-      if (isConnected) {
-        _startKeepalive();
-      } else {
+      if (!isConnected) {
+        _isSessionReady = false;
+        _pendingDeviceInfoCompleter = null;
+        _pendingSelfInfoCompleter = null;
         _stopKeepalive();
+      } else if (_isSessionReady) {
+        _startKeepalive();
       }
       onConnectionStateChanged?.call(isConnected);
     };
@@ -192,9 +198,17 @@ class MeshCoreBleService extends MeshCoreServiceBase {
           _responseHandler.setOurNodeHash(publicKey[0]);
         }
       }
+      final completer = _pendingSelfInfoCompleter;
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(selfInfo);
+      }
       onSelfInfoReceived?.call(selfInfo);
     };
     _responseHandler.onDeviceInfoReceived = (deviceInfo) {
+      final completer = _pendingDeviceInfoCompleter;
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(deviceInfo);
+      }
       onDeviceInfoReceived?.call(deviceInfo);
     };
     _responseHandler.onNoMoreMessages = () {
@@ -301,6 +315,9 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Connect to a MeshCore device
   Future<bool> connect(BluetoothDevice device) async {
+    _isSessionReady = false;
+    _pendingDeviceInfoCompleter = null;
+    _pendingSelfInfoCompleter = null;
     final success = await _connectionManager.connect(device);
     if (success) {
       try {
@@ -317,13 +334,16 @@ class MeshCoreBleService extends MeshCoreServiceBase {
           );
         }
 
-        // Send initial device query and wait for responses
-        await _sendDeviceQuery();
+        // Bootstrap the MeshCore app session after BLE transport is ready.
+        await _initializeSession();
 
+        _isSessionReady = true;
+        _startKeepalive();
         debugPrint('✅ [Service] Device initialization complete');
         return true;
       } catch (e) {
         debugPrint('❌ [Service] Device initialization failed: $e');
+        _isSessionReady = false;
         // Disconnect on initialization failure
         await disconnect();
         onError?.call('Device initialization failed: $e');
@@ -335,52 +355,41 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Disconnect from device
   Future<void> disconnect() async {
+    _isSessionReady = false;
+    _pendingDeviceInfoCompleter = null;
+    _pendingSelfInfoCompleter = null;
     await _connectionManager.disconnect();
   }
 
-  /// Send initial device query and sync clock
-  Future<void> _sendDeviceQuery() async {
-    // STEP 1: Send device query FIRST to get device capabilities
-    // This is the first command to send per protocol documentation
-    debugPrint(
-      '🔍 [Service] Querying device information (CMD_DEVICE_QUERY)...',
-    );
-    final deviceInfo = await _commandSender
-        .writeDataAndWaitForResponse<Map<String, dynamic>>(
-          FrameBuilder.buildDeviceQuery(),
-          MeshCoreConstants.respDeviceInfo,
-        );
-    debugPrint(
-      '✅ [Service] Device info received: firmware=${deviceInfo['firmwareVersion']}',
-    );
+  Future<void> _initializeSession() async {
+    await _requestDeviceInfoWithRetry();
+    await _requestSelfInfoWithRetry();
 
-    // STEP 2: Send app start to initialize the app session
-    // This is the first command after connection per protocol documentation
-    debugPrint('🚀 [Service] Sending app start (CMD_APP_START)...');
-    await _commandSender.writeDataAndWaitForResponse<Map<String, dynamic>>(
-      FrameBuilder.buildAppStart(appName: appName),
-      MeshCoreConstants.respSelfInfo,
-    );
-    debugPrint('✅ [Service] Self info received: node initialized');
-
-    // STEP 3: Set device clock AFTER initialization
-    // This ensures the device has correct timestamps for all subsequent operations
-    // Note: This command does not return an ACK, so we use writeData (fire-and-forget)
     debugPrint('⏰ [Service] Setting device clock (CMD_SET_DEVICE_TIME)...');
     await _commandSender.writeData(FrameBuilder.buildSetDeviceTime());
     debugPrint('✅ [Service] Device clock sent (no ACK expected)');
+  }
 
-    // STEP 4: Sync any waiting messages immediately after connection
-    // This ensures we receive messages that arrived while disconnected
-    debugPrint('📬 [Service] Syncing messages (CMD_SYNC_NEXT_MESSAGE)...');
-    await syncNextMessage();
-    debugPrint('✅ [Service] Message sync initiated');
+  Future<void> _requestDeviceInfoWithRetry() async {
+    debugPrint(
+      '🔍 [Service] Querying device information (CMD_DEVICE_QUERY)...',
+    );
+    final deviceInfo = await _sendAndAwaitDeviceInfo();
+    debugPrint(
+      '✅ [Service] Device info received: firmware=${deviceInfo['firmwareVersion']}',
+    );
+  }
+
+  Future<void> _requestSelfInfoWithRetry() async {
+    debugPrint('🚀 [Service] Sending app start (CMD_APP_START)...');
+    await _sendAndAwaitSelfInfo();
+    debugPrint('✅ [Service] Self info received: node initialized');
   }
 
   /// Refresh device info (public method)
   Future<void> refreshDeviceInfo() async {
     _ensureSpectrumScanNotActive('refresh device info');
-    await _sendDeviceQuery();
+    await _initializeSession();
   }
 
   /// Get contacts from device
@@ -919,6 +928,58 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     if (_isSpectrumScanActive) {
       throw StateError('Cannot $action during spectrum scan');
     }
+  }
+
+  Future<Map<String, dynamic>> _sendAndAwaitDeviceInfo() async {
+    const maxAttempts = 2;
+    final timeout = kIsWeb
+        ? const Duration(seconds: 20)
+        : const Duration(seconds: 10);
+
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      _pendingDeviceInfoCompleter = Completer<Map<String, dynamic>>();
+      await _commandSender.writeData(FrameBuilder.buildDeviceQuery());
+
+      try {
+        return await _pendingDeviceInfoCompleter!.future.timeout(timeout);
+      } on TimeoutException {
+        debugPrint(
+          '⚠️ [Service] Device info attempt ${attempt + 1}/$maxAttempts timed out after ${timeout.inSeconds}s',
+        );
+        if (attempt == maxAttempts - 1) rethrow;
+      } finally {
+        _pendingDeviceInfoCompleter = null;
+      }
+    }
+
+    throw TimeoutException('Device info request failed');
+  }
+
+  Future<Map<String, dynamic>> _sendAndAwaitSelfInfo() async {
+    const maxAttempts = 3;
+    final timeout = kIsWeb
+        ? const Duration(seconds: 8)
+        : const Duration(seconds: 5);
+
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      _pendingSelfInfoCompleter = Completer<Map<String, dynamic>>();
+      await _commandSender.writeData(
+        FrameBuilder.buildAppStart(appName: appName),
+      );
+
+      try {
+        return await _pendingSelfInfoCompleter!.future.timeout(timeout);
+      } on TimeoutException {
+        debugPrint(
+          '⚠️ [Service] Self info attempt ${attempt + 1}/$maxAttempts timed out after ${timeout.inSeconds}s',
+        );
+        if (attempt == maxAttempts - 1) rethrow;
+      } finally {
+        _pendingSelfInfoCompleter = null;
+      }
+    }
+
+    throw TimeoutException('Self info request failed');
   }
 
   Duration _estimateSpectrumScanTimeout({

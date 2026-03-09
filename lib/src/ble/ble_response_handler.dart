@@ -135,7 +135,7 @@ class BleResponseHandler {
 
   /// Subscribe to TX characteristic notifications
   void subscribeToNotifications(BluetoothCharacteristic txCharacteristic) {
-    _txSubscription = txCharacteristic.lastValueStream.listen(
+    _txSubscription = txCharacteristic.onValueReceived.listen(
       _onDataReceived,
       onError: (error) {
         debugPrint('❌ [BLE] TX notification error: $error');
