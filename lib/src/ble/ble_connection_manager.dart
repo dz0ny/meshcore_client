@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_blue_plus_platform_interface/flutter_blue_plus_platform_interface.dart';
 import '../meshcore_constants.dart';
 
 /// Callback types for connection events
@@ -192,7 +193,21 @@ class BleConnectionManager {
 
       // Enable notifications on TX characteristic
       debugPrint('🔵 [BLE] Enabling notifications on TX characteristic...');
-      await _txCharacteristic!.setNotifyValue(true);
+      if (kIsWeb) {
+        await FlutterBluePlusPlatform.instance.setNotifyValue(
+          BmSetNotifyValueRequest(
+            remoteId: _txCharacteristic!.remoteId,
+            primaryServiceUuid: _txCharacteristic!.primaryServiceUuid,
+            serviceUuid: _txCharacteristic!.serviceUuid,
+            characteristicUuid: _txCharacteristic!.characteristicUuid,
+            instanceId: _txCharacteristic!.instanceId,
+            forceIndications: false,
+            enable: true,
+          ),
+        );
+      } else {
+        await _txCharacteristic!.setNotifyValue(true);
+      }
       debugPrint('✅ [BLE] Notifications enabled');
 
       _isConnected = true;
