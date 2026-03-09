@@ -81,12 +81,24 @@ class BleConnectionManager {
             '  Device: ${result.device.platformName} (${result.device.remoteId})',
           );
           debugPrint('    RSSI: ${result.rssi}');
-          debugPrint('    Service UUIDs: ${result.advertisementData.serviceUuids}');
+          final serviceUuids = result.advertisementData.serviceUuids;
+          debugPrint('    Service UUIDs: $serviceUuids');
 
-          if (result.advertisementData.serviceUuids.contains(
-            Guid(MeshCoreConstants.bleServiceUuid),
-          )) {
+          final hasMatchingServiceUuid = serviceUuids.any(
+            (uuid) =>
+                uuid.toString().toLowerCase() ==
+                MeshCoreConstants.bleServiceUuid.toLowerCase(),
+          );
+          final isWebResultMissingAdvertisedServices =
+              kIsWeb && serviceUuids.isEmpty;
+
+          if (hasMatchingServiceUuid || isWebResultMissingAdvertisedServices) {
             deviceCount++;
+            if (isWebResultMissingAdvertisedServices) {
+              debugPrint(
+                '  ℹ️ Web scan result has no advertised service UUIDs; trusting the browser service filter',
+              );
+            }
             debugPrint('  ✅ MeshCore device found! Total: $deviceCount');
             yield result;
           } else {
@@ -94,7 +106,9 @@ class BleConnectionManager {
           }
         }
       }
-      debugPrint('🏁 [BLE] Scan completed. Found $deviceCount MeshCore devices');
+      debugPrint(
+        '🏁 [BLE] Scan completed. Found $deviceCount MeshCore devices',
+      );
     } catch (e) {
       debugPrint('❌ [BLE] Scan error: $e');
       onError?.call('Scan error: $e');
@@ -313,7 +327,9 @@ class BleConnectionManager {
           _isReconnecting = false;
           _reconnectionAttempt = 0;
         } else {
-          debugPrint('❌ [BLE] Reconnection attempt $_reconnectionAttempt failed');
+          debugPrint(
+            '❌ [BLE] Reconnection attempt $_reconnectionAttempt failed',
+          );
           _isReconnecting = false;
 
           // Try again if we haven't reached max attempts
@@ -326,7 +342,9 @@ class BleConnectionManager {
           }
         }
       } catch (e) {
-        debugPrint('❌ [BLE] Reconnection attempt $_reconnectionAttempt error: $e');
+        debugPrint(
+          '❌ [BLE] Reconnection attempt $_reconnectionAttempt error: $e',
+        );
         _isReconnecting = false;
 
         // Try again if we haven't reached max attempts
