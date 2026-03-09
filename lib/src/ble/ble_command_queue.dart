@@ -141,26 +141,9 @@ class BleCommandQueue {
       _processQueue();
     }
 
-    // Wait for command to complete or timeout
-    final completion = command.completer.future.timeout(
-      cmdTimeout,
-      onTimeout: () {
-        debugPrint(
-          '⏱️ [CommandQueue] Command 0x${commandCode.toRadixString(16).padLeft(2, '0')} timed out after ${cmdTimeout.inSeconds}s',
-        );
-        _removePendingCommand(command);
-        if (!command.completer.isCompleted) {
-          command.completer.completeError(
-            TimeoutException(
-              'Command 0x${commandCode.toRadixString(16).padLeft(2, '0')} timed out',
-            ),
-          );
-        }
-        throw TimeoutException(
-          'Command 0x${commandCode.toRadixString(16).padLeft(2, '0')} timed out',
-        );
-      },
-    );
+    // Start the timeout when the command becomes active, not while it is
+    // still waiting in the serialized queue.
+    final completion = _awaitCommandCompletion(command, cmdTimeout);
 
     return EnqueuedCommandHandle<T>(
       completion: completion,
@@ -373,5 +356,40 @@ class BleCommandQueue {
     if (bucket.isEmpty) {
       _pendingResponses.remove(responseKey);
     }
+  }
+
+  Future<T> _awaitCommandCompletion<T>(
+    QueuedCommand<T> command,
+    Duration cmdTimeout,
+  ) async {
+    if (command.completer.isCompleted) {
+      return command.completer.future;
+    }
+
+    await command.activated.future;
+
+    if (command.completer.isCompleted) {
+      return command.completer.future;
+    }
+
+    return command.completer.future.timeout(
+      cmdTimeout,
+      onTimeout: () {
+        debugPrint(
+          '⏱️ [CommandQueue] Command 0x${command.commandCode.toRadixString(16).padLeft(2, '0')} timed out after ${cmdTimeout.inSeconds}s',
+        );
+        _removePendingCommand(command);
+        if (!command.completer.isCompleted) {
+          command.completer.completeError(
+            TimeoutException(
+              'Command 0x${command.commandCode.toRadixString(16).padLeft(2, '0')} timed out',
+            ),
+          );
+        }
+        throw TimeoutException(
+          'Command 0x${command.commandCode.toRadixString(16).padLeft(2, '0')} timed out',
+        );
+      },
+    );
   }
 }

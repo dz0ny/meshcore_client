@@ -155,5 +155,30 @@ void main() {
       expect(queue.queueSize, 0);
       expect(queue.pendingResponseCount, 0);
     });
+
+    test('does not time out before activation while waiting in the queue', () async {
+      final queue = BleCommandQueue();
+
+      final first = queue.enqueue<void>(
+        data: Uint8List.fromList([0x03]),
+        commandCode: 0x03,
+        responseType: CommandResponseType.ack,
+        timeout: const Duration(seconds: 1),
+      );
+
+      final second = queue.enqueue<void>(
+        data: Uint8List.fromList([0x0A]),
+        commandCode: 0x0A,
+        responseType: CommandResponseType.none,
+        timeout: const Duration(milliseconds: 50),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(queue.pendingResponseCount, 1);
+
+      queue.completeCommand<void>(MeshCoreConstants.respOk, null);
+      await first;
+      await expectLater(second, completes);
+    });
   });
 }
