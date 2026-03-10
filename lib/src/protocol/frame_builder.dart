@@ -49,7 +49,7 @@ class FrameBuilder {
     writer.writeBytes(contact.publicKey); // 32 bytes
     writer.writeByte(contact.type.value); // ADV_TYPE_*
     writer.writeByte(contact.flags); // flags
-    writer.writeInt8(contact.outPathLen); // path length (signed byte)
+    writer.writeByte(contact.outPathLen & 0xFF); // raw path descriptor
     writer.writeBytes(contact.outPath); // 64 bytes
 
     // Write name as null-terminated string in 32-byte field
@@ -130,8 +130,14 @@ class FrameBuilder {
   }) {
     final writer = BufferWriter();
     writer.writeByte(MeshCoreConstants.cmdSendRawData); // 25
-    writer.writeInt8(pathLen); // signed, must be >= 0
-    writer.writeBytes(path.sublist(0, pathLen.clamp(0, path.length)));
+    writer.writeByte(pathLen & 0xFF); // raw path descriptor
+    final normalized = pathLen & 0xFF;
+    final pathByteLen = normalized == 0xFF
+        ? 0
+        : ((normalized >> 6) == 0)
+        ? normalized
+        : (normalized & 0x3F) * ((normalized >> 6) + 1);
+    writer.writeBytes(path.sublist(0, pathByteLen.clamp(0, path.length)));
     writer.writeBytes(payload);
     return writer.toBytes();
   }

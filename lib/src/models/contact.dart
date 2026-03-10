@@ -80,7 +80,10 @@ class Contact {
   /// Get public key as hex string (first 8 bytes)
   String get publicKeyShort {
     if (publicKey.length < 8) return '';
-    return publicKey.sublist(0, 8).map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
+    return publicKey
+        .sublist(0, 8)
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join('');
   }
 
   /// Get full public key as hex string
@@ -215,32 +218,46 @@ class Contact {
 
   /// Check if this contact is the Public Channel (all-zeros public key)
   bool get isPublicChannel =>
-      publicKeyHex == '0000000000000000000000000000000000000000000000000000000000000000';
+      publicKeyHex ==
+      '0000000000000000000000000000000000000000000000000000000000000000';
 
   /// Check if contact has a learned routing path
   /// When true, messages will use direct routing. When false, messages will use flood mode.
-  /// outPathLen: -1 = unknown/not learned, 0 = direct (zero hops), 1+ = multi-hop path
-  bool get hasPath => outPathLen >= 0 && outPathLen <= 64;
+  /// outPathLen stores the raw firmware path descriptor; 0xFF means unknown/not learned.
+  int get pathDescriptor => outPathLen & 0xFF;
+
+  bool get hasPath {
+    if (pathDescriptor == 0xFF) return false;
+    final hashSize = (pathDescriptor >> 6) + 1;
+    final hopCount = pathDescriptor & 0x3F;
+    return hopCount * hashSize <= 64;
+  }
+
+  int get pathHashSize {
+    if (!hasPath) return 1;
+    return (pathDescriptor >> 6) + 1;
+  }
+
+  int get pathHopCount => hasPath ? (pathDescriptor & 0x3F) : -1;
+
+  int get pathByteLength => hasPath ? pathHopCount * pathHashSize : 0;
 
   /// Get path description for UI display
   String get pathDescription {
     if (!hasPath) {
-      // -1 (0xFF) indicates path not learned yet
       return 'No path (flood mode)';
     }
 
-    // outPathLen = 0 means direct connection with zero hops
-    // outPathLen >= 1 means path with N hops
-    if (outPathLen == 0) {
+    if (pathHopCount == 0) {
       return 'Direct (0 hops)';
-    } else if (outPathLen == 1) {
+    } else if (pathHopCount == 1) {
       return 'Direct (1 hop)';
-    } else if (outPathLen <= 3) {
-      return 'Good path ($outPathLen hops)';
-    } else if (outPathLen <= 5) {
-      return 'Medium path ($outPathLen hops)';
+    } else if (pathHopCount <= 3) {
+      return 'Good path ($pathHopCount hops)';
+    } else if (pathHopCount <= 5) {
+      return 'Medium path ($pathHopCount hops)';
     } else {
-      return 'Long path ($outPathLen hops)';
+      return 'Long path ($pathHopCount hops)';
     }
   }
 
@@ -248,11 +265,11 @@ class Contact {
   /// -1 means no path (will use flood mode)
   int get pathQuality {
     if (!hasPath) return -1;
-    if (outPathLen == 0) return 5; // Direct connection (0 hops)
-    if (outPathLen == 1) return 4; // 1 hop
-    if (outPathLen <= 2) return 3; // 2 hops
-    if (outPathLen <= 3) return 2; // 3 hops
-    if (outPathLen <= 4) return 1; // 4 hops
+    if (pathHopCount == 0) return 5; // Direct connection (0 hops)
+    if (pathHopCount == 1) return 4; // 1 hop
+    if (pathHopCount <= 2) return 3; // 2 hops
+    if (pathHopCount <= 3) return 2; // 3 hops
+    if (pathHopCount <= 4) return 1; // 4 hops
     return 0; // 5+ hops
   }
 
@@ -296,9 +313,9 @@ class Contact {
     final dLat = (point2.latitude - point1.latitude) * (pi / 180);
     final dLon = (point2.longitude - point1.longitude) * (pi / 180);
 
-    final a = sin(dLat / 2) * sin(dLat / 2) +
-              cos(lat1) * cos(lat2) *
-              sin(dLon / 2) * sin(dLon / 2);
+    final a =
+        sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2);
     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
     return earthRadius * c;
@@ -344,8 +361,7 @@ class Contact {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is Contact &&
-           publicKeyHex == other.publicKeyHex;
+    return other is Contact && publicKeyHex == other.publicKeyHex;
   }
 
   @override

@@ -30,6 +30,21 @@ void main() {
       expect(message.senderTimestamp, 0x12345678);
     });
 
+    test('parses contact message descriptor into hop count', () {
+      final payload = Uint8List.fromList([
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,
+        0x42, // 2 hops, 2-byte hashes
+        MessageTextType.plain.value,
+        0x78, 0x56, 0x34, 0x12,
+        ...'hello'.codeUnits,
+      ]);
+
+      final message = FrameParser.parseContactMessage(BufferReader(payload));
+
+      expect(message.pathLen, 2);
+      expect(message.text, 'hello');
+    });
+
     test('decodes SMAZ-prefixed contact messages', () {
       final payload = Uint8List.fromList([
         0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, // pubkey prefix
@@ -99,8 +114,8 @@ void main() {
         0x01, // flags: has path bytes
         0x00, // reserved
         0x02, // channel idx
-        0x02, // path len
-        0xAA, 0xBB, // path bytes
+        0x42, // 2 hops, 2-byte hashes
+        0xAA, 0xBB, 0xCC, 0xDD, // path bytes
         MessageTextType.plain.value,
         0x78, 0x56, 0x34, 0x12, // timestamp
         ...'Bob: status ok'.codeUnits,
@@ -135,6 +150,29 @@ void main() {
       expect(message.text, 'plain update');
       expect(message.senderName, isNull);
       expect(message.senderTimestamp, 0x01020304);
+    });
+
+    test('parses contact records with unsigned route descriptor', () {
+      final payload = Uint8List.fromList([
+        ...List<int>.filled(32, 0x11),
+        0x01,
+        0x00,
+        0x82, // 2 hops, 3-byte hashes
+        ...List<int>.filled(64, 0x22),
+        ...List<int>.filled(32, 0x00),
+        0x78, 0x56, 0x34, 0x12,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0xEF, 0xCD, 0xAB, 0x90,
+      ]);
+
+      final contact = FrameParser.parseContact(BufferReader(payload));
+
+      expect(contact.outPathLen, 0x82);
+      expect(contact.hasPath, isTrue);
+      expect(contact.pathHashSize, 3);
+      expect(contact.pathHopCount, 2);
+      expect(contact.pathByteLength, 6);
     });
   });
 }

@@ -20,7 +20,7 @@ class FrameParser {
     final typeByte = reader.readByte();
     final type = ContactType.fromValue(typeByte);
     final flags = reader.readByte();
-    final outPathLen = reader.readInt8();
+    final outPathLen = reader.readByte();
     final outPath = reader.readBytes(64);
     final advName = reader.readCString(32);
     final lastAdvert = reader.readUInt32LE();
@@ -79,15 +79,18 @@ class FrameParser {
     reader.readByte(); // reserved
 
     final channelIdx = reader.readByte();
-    final pathLen = reader.readInt8();
+    final pathDescriptor = reader.readByte();
+    final pathByteLen = _pathByteLength(pathDescriptor);
+    final pathHopCount = _pathHopCount(pathDescriptor);
 
-    final canFitPath = pathLen > 0 && reader.remainingBytesCount >= pathLen + 5;
+    final canFitPath =
+        pathByteLen > 0 && reader.remainingBytesCount >= pathByteLen + 5;
     if (canFitPath) {
       final nextByte = reader.peekByte();
       final hasValidTxtType = _parseTextType(nextByte) != null;
       final hasPathBytesFlag = (flags & 0x01) != 0;
       if (hasPathBytesFlag || !hasValidTxtType) {
-        reader.readBytes(pathLen);
+        reader.readBytes(pathByteLen);
       }
     }
 
@@ -101,7 +104,7 @@ class FrameParser {
       id: '${DateTime.now().millisecondsSinceEpoch}_ch$channelIdx',
       messageType: MessageType.channel,
       channelIdx: channelIdx,
-      pathLen: pathLen,
+      pathLen: pathHopCount,
       textType: txtType,
       senderTimestamp: senderTimestamp,
       text: parsed.$2,
@@ -113,7 +116,7 @@ class FrameParser {
   /// Parse ContactMessage response
   static Message parseContactMessage(BufferReader reader) {
     final pubKeyPrefix = reader.readBytes(6);
-    final pathLen = reader.readByte();
+    final pathDescriptor = reader.readByte();
     final txtTypeByte = reader.readByte();
     final txtType = _parseTextType(txtTypeByte) ?? MessageTextType.plain;
     final senderTimestamp = reader.readUInt32LE();
@@ -139,7 +142,7 @@ class FrameParser {
       id: '${DateTime.now().millisecondsSinceEpoch}_${pubKeyPrefix.map((b) => b.toRadixString(16)).join()}',
       messageType: MessageType.contact,
       senderPublicKeyPrefix: pubKeyPrefix,
-      pathLen: pathLen,
+      pathLen: _pathHopCount(pathDescriptor),
       textType: txtType,
       senderTimestamp: senderTimestamp,
       text: decodedText,
@@ -150,7 +153,7 @@ class FrameParser {
   /// Parse ChannelMessage response
   static Message parseChannelMessage(BufferReader reader) {
     final channelIdx = reader.readByte(); // unsigned 0-255, not signed
-    final pathLen = reader.readByte();
+    final pathDescriptor = reader.readByte();
     final txtTypeByte = reader.readByte();
     final txtType = _parseTextType(txtTypeByte) ?? MessageTextType.plain;
     final senderTimestamp = reader.readUInt32LE();
@@ -175,7 +178,7 @@ class FrameParser {
       id: '${DateTime.now().millisecondsSinceEpoch}_ch$channelIdx',
       messageType: MessageType.channel,
       channelIdx: channelIdx,
-      pathLen: pathLen,
+      pathLen: _pathHopCount(pathDescriptor),
       textType: txtType,
       senderTimestamp: senderTimestamp,
       text: actualMessage, // Store the actual message without sender prefix
@@ -195,6 +198,21 @@ class FrameParser {
     if (shiftedMatch.isNotEmpty) return shiftedMatch.first;
 
     return null;
+  }
+
+  static int _pathHopCount(int descriptor) {
+    final normalized = descriptor & 0xFF;
+    if (normalized == 0xFF) return 255;
+    return normalized & 0x3F;
+  }
+
+  static int _pathByteLength(int descriptor) {
+    final normalized = descriptor & 0xFF;
+    if (normalized == 0xFF) return 0;
+    final hashMode = normalized >> 6;
+    if (hashMode == 0) return normalized;
+    final hashSize = hashMode + 1;
+    return (normalized & 0x3F) * hashSize;
   }
 
   static (String?, String) _decodeChannelText(

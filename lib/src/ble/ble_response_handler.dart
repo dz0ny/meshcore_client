@@ -613,13 +613,14 @@ class BleResponseHandler {
 
         if (pathLen > 0) {
           final path = parsed.path;
+          final hopCount = _pathHopCount(parsed.pathDescriptor);
           final pathStr = path
               .map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}')
               .join(' → ');
-          debugPrint('    Path ($pathLen hops): $pathStr');
+          debugPrint('    Path ($hopCount hops, $pathLen bytes): $pathStr');
 
           // Highlight multi-hop packets
-          if (pathLen > 1) {
+          if (hopCount > 1) {
             debugPrint(
               '    🔄 MULTI-HOP PACKET! Original sender: 0x${path[0].toRadixString(16).padLeft(2, '0')}',
             );
@@ -703,11 +704,14 @@ class BleResponseHandler {
     }
 
     if (rawPacketData.length <= i) return null;
-    final pathLen = rawPacketData[i++];
-    if (rawPacketData.length < i + pathLen) return null;
+    final pathDescriptor = rawPacketData[i++];
+    final pathByteLen = _pathByteLength(pathDescriptor);
+    if (pathByteLen == null || rawPacketData.length < i + pathByteLen) {
+      return null;
+    }
 
-    final path = rawPacketData.sublist(i, i + pathLen);
-    i += pathLen;
+    final path = rawPacketData.sublist(i, i + pathByteLen);
+    i += pathByteLen;
     final payload = rawPacketData.sublist(i);
 
     return _ParsedRawPacket(
@@ -715,9 +719,25 @@ class BleResponseHandler {
       routeType: routeType,
       payloadType: payloadType,
       payloadVer: payloadVer,
+      pathDescriptor: pathDescriptor,
       path: path,
       payload: payload,
     );
+  }
+
+  int? _pathByteLength(int descriptor) {
+    final normalized = descriptor & 0xFF;
+    if (normalized == 0xFF) return 0;
+    final pathMode = normalized >> 6;
+    if (pathMode == 3) return null;
+    if (pathMode == 0) return normalized;
+    return (normalized & 0x3F) * (pathMode + 1);
+  }
+
+  int _pathHopCount(int descriptor) {
+    final normalized = descriptor & 0xFF;
+    if (normalized == 0xFF) return 255;
+    return normalized & 0x3F;
   }
 
   void _tryDecodeGroupPacket(_ParsedRawPacket packet, int snrRaw, int rssiDbm) {
@@ -1100,15 +1120,20 @@ class BleResponseHandler {
         return; // Only track GRP_TXT
       }
 
-      final pathLen = rawPacket[1];
-      debugPrint('  🔍 [Echo] Path length: $pathLen');
-      if (pathLen == 0 || rawPacket.length < 2 + pathLen) {
+      final pathDescriptor = rawPacket[1];
+      final pathByteLen = _pathByteLength(pathDescriptor);
+      debugPrint(
+        '  🔍 [Echo] Path descriptor: 0x${pathDescriptor.toRadixString(16).padLeft(2, '0')}',
+      );
+      if (pathByteLen == null ||
+          pathByteLen == 0 ||
+          rawPacket.length < 2 + pathByteLen) {
         debugPrint('  ⚠️ [Echo] Invalid path length');
         return;
       }
 
       // Extract path for unique echo tracking
-      final path = rawPacket.sublist(2, 2 + pathLen);
+      final path = rawPacket.sublist(2, 2 + pathByteLen);
       final pathSignature = path
           .map((b) => b.toRadixString(16).padLeft(2, '0'))
           .join(':');
@@ -1122,7 +1147,7 @@ class BleResponseHandler {
       }
 
       // Extract encrypted payload
-      final payloadStart = 2 + pathLen;
+      final payloadStart = 2 + pathByteLen;
       final encryptedPayload = rawPacket.sublist(payloadStart);
       final payloadHash = _simplePacketHash(encryptedPayload);
 
@@ -1256,9 +1281,12 @@ class BleResponseHandler {
         return;
       }
 
-      final pathLen = rawPacket[1];
-      debugPrint('  🔍 [Echo] Path length for association: $pathLen');
-      if (pathLen == 0) {
+      final pathDescriptor = rawPacket[1];
+      final pathByteLen = _pathByteLength(pathDescriptor);
+      debugPrint(
+        '  🔍 [Echo] Path descriptor for association: 0x${pathDescriptor.toRadixString(16).padLeft(2, '0')}',
+      );
+      if (pathByteLen == null || pathByteLen == 0) {
         debugPrint('  ⚠️ [Echo] Path length is 0, skipping');
         return;
       }
@@ -1266,7 +1294,7 @@ class BleResponseHandler {
       final now = DateTime.now();
 
       // Extract the path from the packet for unique echo tracking
-      final path = rawPacket.sublist(2, 2 + pathLen);
+      final path = rawPacket.sublist(2, 2 + pathByteLen);
       final pathSignature = path
           .map((b) => b.toRadixString(16).padLeft(2, '0'))
           .join(':');
@@ -1284,7 +1312,7 @@ class BleResponseHandler {
       );
 
       // Extract encrypted payload (everything after path)
-      final payloadStart = 2 + pathLen;
+      final payloadStart = 2 + pathByteLen;
       final encryptedPayload = rawPacket.sublist(payloadStart);
       // Hash only the encrypted payload to identify the same message
       final payloadHash = _simplePacketHash(encryptedPayload);
@@ -1777,6 +1805,7 @@ class _ParsedRawPacket {
   final int routeType;
   final int payloadType;
   final int payloadVer;
+  final int pathDescriptor;
   final Uint8List path;
   final Uint8List payload;
 
@@ -1785,6 +1814,7 @@ class _ParsedRawPacket {
     required this.routeType,
     required this.payloadType,
     required this.payloadVer,
+    required this.pathDescriptor,
     required this.path,
     required this.payload,
   });
