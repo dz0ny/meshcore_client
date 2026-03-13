@@ -315,6 +315,13 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build FactoryReset command - erases device data and restores defaults
+  static Uint8List buildFactoryReset() {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdFactoryReset); // 0x33 (51)
+    return writer.toBytes();
+  }
+
   /// Build RemoveContact command - removes a contact from the device
   static Uint8List buildRemoveContact(Uint8List contactPublicKey) {
     final writer = BufferWriter();

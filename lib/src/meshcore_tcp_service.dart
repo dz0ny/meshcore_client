@@ -386,6 +386,10 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
       _commandSender.writeData(FrameBuilder.buildResetPath(contactPublicKey));
 
   @override
+  Future<void> factoryReset() =>
+      _commandSender.writeData(FrameBuilder.buildFactoryReset());
+
+  @override
   Future<void> sendTextMessage({
     required Uint8List contactPublicKey,
     required String text,

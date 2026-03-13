@@ -41,12 +41,15 @@ enum ContactType {
 
 /// MeshCore contact model
 class Contact {
+  static const Object _nameOverrideSentinel = Object();
+
   final Uint8List publicKey;
   final ContactType type;
   final int flags;
   final int outPathLen;
   final Uint8List outPath;
   final String advName;
+  final String? nameOverride;
   final int lastAdvert; // Unix timestamp
   final int advLat; // Latitude as int32
   final int advLon; // Longitude as int32
@@ -68,6 +71,7 @@ class Contact {
     required this.outPathLen,
     required this.outPath,
     required this.advName,
+    this.nameOverride,
     required this.lastAdvert,
     required this.advLat,
     required this.advLon,
@@ -209,6 +213,11 @@ class Contact {
   /// Get display name without role emoji (e.g., "🧑🏻‍🚒Janez" → "Janez")
   /// If no emoji, returns full advName
   String get displayName {
+    final overriddenName = nameOverride?.trim();
+    if (overriddenName != null && overriddenName.isNotEmpty) {
+      return overriddenName;
+    }
+
     final emoji = roleEmoji;
     if (emoji == null) return advName;
 
@@ -328,6 +337,7 @@ class Contact {
     int? outPathLen,
     Uint8List? outPath,
     String? advName,
+    Object? nameOverride = _nameOverrideSentinel,
     int? lastAdvert,
     int? advLat,
     int? advLon,
@@ -343,6 +353,9 @@ class Contact {
       outPathLen: outPathLen ?? this.outPathLen,
       outPath: outPath ?? this.outPath,
       advName: advName ?? this.advName,
+      nameOverride: identical(nameOverride, _nameOverrideSentinel)
+          ? this.nameOverride
+          : nameOverride as String?,
       lastAdvert: lastAdvert ?? this.lastAdvert,
       advLat: advLat ?? this.advLat,
       advLon: advLon ?? this.advLon,

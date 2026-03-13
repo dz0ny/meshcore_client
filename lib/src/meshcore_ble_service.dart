@@ -749,6 +749,12 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     );
   }
 
+  @override
+  Future<void> factoryReset() async {
+    debugPrint('💥 [BLE] Sending factory reset command');
+    await _commandSender.writeData(FrameBuilder.buildFactoryReset());
+  }
+
   /// Remove a contact from the companion radio
   Future<void> removeContact(Uint8List contactPublicKey) async {
     debugPrint('🗑️ [BLE] Removing contact from companion radio:');

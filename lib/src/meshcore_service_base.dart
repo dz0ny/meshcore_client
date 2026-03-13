@@ -66,6 +66,7 @@ abstract class MeshCoreServiceBase {
   Future<void> addOrUpdateContact(Contact contact);
   Future<void> removeContact(Uint8List contactPublicKey);
   Future<void> resetPath(Uint8List contactPublicKey);
+  Future<void> factoryReset();
 
   Future<void> sendTextMessage({
     required Uint8List contactPublicKey,
