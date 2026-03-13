@@ -69,6 +69,7 @@ typedef OnAllowedRepeatFreqCallback =
 
 /// Processes incoming responses from the BLE device
 class BleResponseHandler {
+  static const bool _verboseLogRxDataLogging = false;
   StreamSubscription? _txSubscription;
   final List<Contact> _pendingContacts = [];
   int _rxPacketCount = 0;
@@ -124,6 +125,12 @@ class BleResponseHandler {
     );
   }
 
+  void _debugLogRxData(String message) {
+    if (_verboseLogRxDataLogging) {
+      debugPrint(message);
+    }
+  }
+
   // Getters
   int get rxPacketCount => _rxPacketCount;
   List<BlePacketLog> get packetLogs => List.unmodifiable(_packetLogs);
@@ -172,13 +179,18 @@ class BleResponseHandler {
       );
       final opcodeHex =
           '0x${responseCode.toRadixString(16).padLeft(2, '0').toUpperCase()}';
+      final shouldLogRxFrame =
+          responseCode != MeshCoreConstants.pushLogRxData ||
+          _verboseLogRxDataLogging;
 
-      debugPrint('📥 [RX] Received: $opcodeName ($opcodeHex)');
-      debugPrint('  Data size: ${data.length} bytes');
-      debugPrint(
-        '  Hex: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-      );
-      debugPrint('  Payload: ${reader.remainingBytesCount} bytes');
+      if (shouldLogRxFrame) {
+        debugPrint('📥 [RX] Received: $opcodeName ($opcodeHex)');
+        debugPrint('  Data size: ${data.length} bytes');
+        debugPrint(
+          '  Hex: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
+        );
+        debugPrint('  Payload: ${reader.remainingBytesCount} bytes');
+      }
 
       // Log RX packet (before processing so we capture everything)
       _logPacket(dataBytes, PacketDirection.rx, responseCode: responseCode);
@@ -241,7 +253,9 @@ class BleResponseHandler {
           _handlePathUpdated(reader);
           break;
         case MeshCoreConstants.pushLogRxData:
-          debugPrint('  → Handling LogRxData push');
+          if (_verboseLogRxDataLogging) {
+            debugPrint('  → Handling LogRxData push');
+          }
           _handleLogRxData(reader);
           break;
         case MeshCoreConstants.pushNewAdvert:
@@ -569,30 +583,30 @@ class BleResponseHandler {
   /// Handle LogRxData push - includes extensive decoding logic
   void _handleLogRxData(BufferReader reader) {
     try {
-      debugPrint(
+      _debugLogRxData(
         '  [LogRxData] Parsing log rx data from over-the-air packet...',
       );
       final data = reader.readRemainingBytes();
 
       if (data.length < 2) {
-        debugPrint('  ⚠️ [LogRxData] Insufficient data');
+        _debugLogRxData('  ⚠️ [LogRxData] Insufficient data');
         return;
       }
 
       final snrRaw = data[0];
       final snrDb = (snrRaw.toSigned(8)) / 4.0;
-      debugPrint('    SNR: ${snrDb.toStringAsFixed(2)} dB');
+      _debugLogRxData('    SNR: ${snrDb.toStringAsFixed(2)} dB');
 
       final rssiDbm = data[1].toSigned(8);
-      debugPrint('    RSSI: $rssiDbm dBm');
+      _debugLogRxData('    RSSI: $rssiDbm dBm');
 
       if (data.length <= 2) {
-        debugPrint('  ⚠️ [LogRxData] No raw packet data');
+        _debugLogRxData('  ⚠️ [LogRxData] No raw packet data');
         return;
       }
 
       final rawPacketData = data.sublist(2);
-      debugPrint('    Raw packet data: ${rawPacketData.length} bytes');
+      _debugLogRxData('    Raw packet data: ${rawPacketData.length} bytes');
 
       // Decode packet header and path for display
       final parsed = _parseRawPacket(rawPacketData);
@@ -605,11 +619,11 @@ class BleResponseHandler {
           parsed.payload,
         );
 
-        debugPrint(
+        _debugLogRxData(
           '    Packet type: $payloadLabel '
           '(0x${payloadType.toRadixString(16).padLeft(2, '0')})',
         );
-        debugPrint('    Packet summary: $payloadSummary');
+        _debugLogRxData('    Packet summary: $payloadSummary');
 
         if (pathLen > 0) {
           final path = parsed.path;
@@ -617,32 +631,36 @@ class BleResponseHandler {
           final pathStr = path
               .map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}')
               .join(' → ');
-          debugPrint('    Path ($hopCount hops, $pathLen bytes): $pathStr');
+          _debugLogRxData(
+            '    Path ($hopCount hops, $pathLen bytes): $pathStr',
+          );
 
           // Highlight multi-hop packets
           if (hopCount > 1) {
-            debugPrint(
+            _debugLogRxData(
               '    🔄 MULTI-HOP PACKET! Original sender: 0x${path[0].toRadixString(16).padLeft(2, '0')}',
             );
           }
 
           // Check if our node hash is in the path
           if (_ourNodeHash != null && path.contains(_ourNodeHash!)) {
-            debugPrint(
+            _debugLogRxData(
               '    ✅✅✅ ECHO DETECTED! Path contains our hash (0x${_ourNodeHash!.toRadixString(16).padLeft(2, '0')}) ✅✅✅',
             );
             if (path[0] == _ourNodeHash) {
-              debugPrint('    👉 WE are the original sender!');
+              _debugLogRxData('    👉 WE are the original sender!');
             } else {
-              debugPrint(
+              _debugLogRxData(
                 '    👉 Original sender: 0x${path[0].toRadixString(16).padLeft(2, '0')}, WE sent it to the network',
               );
             }
           } else {
-            debugPrint('    ℹ️  Does NOT contain our hash (not our message)');
+            _debugLogRxData(
+              '    ℹ️  Does NOT contain our hash (not our message)',
+            );
           }
         } else {
-          debugPrint('    Path length: $pathLen');
+          _debugLogRxData('    Path length: $pathLen');
         }
 
         _tryDecodeGroupPacket(parsed, snrRaw, rssiDbm);
@@ -682,9 +700,9 @@ class BleResponseHandler {
         }
       }
 
-      debugPrint('  ✅ [LogRxData] Parsed successfully');
+      _debugLogRxData('  ✅ [LogRxData] Parsed successfully');
     } catch (e) {
-      debugPrint('  ❌ [LogRxData] Parsing error: $e');
+      _debugLogRxData('  ❌ [LogRxData] Parsing error: $e');
     }
   }
 
@@ -753,7 +771,7 @@ class BleResponseHandler {
     final encrypted = packet.payload.sublist(3);
 
     if (encrypted.isEmpty || (encrypted.length % 16) != 0) {
-      debugPrint(
+      _debugLogRxData(
         '    🔐 [LogRxData] Group payload has invalid encrypted length: ${encrypted.length}',
       );
       return;
@@ -789,29 +807,28 @@ class BleResponseHandler {
       final txtType = txtTypeRaw >> 2;
       final attempt = txtTypeRaw & 0x03;
 
-      debugPrint(
+      _debugLogRxData(
         '    🔓 [LogRxData] Decrypted with channel ${candidate.channelIdx} "${candidate.channelName}"',
       );
-      debugPrint(
+      _debugLogRxData(
         '       Channel hash: 0x${channelHash.toRadixString(16).padLeft(2, '0')}',
       );
-      debugPrint('       Timestamp: $ts');
+      _debugLogRxData('       Timestamp: $ts');
 
       if (packet.payloadType == 0x05) {
         if (txtType == 0) {
           final text = _decodeCString(decrypted, 5);
           final parsedText = _splitChannelSenderText(text);
           final isOwnEcho = _pathContainsOurNodeHash(packet.path);
-          debugPrint('       Text: $text');
+          _debugLogRxData('       Text: $text');
           if (isOwnEcho) {
-            debugPrint(
+            _debugLogRxData(
               '       ↩️ [LogRxData] Skipping received callback for our echoed channel message',
             );
           } else {
             onMessageReceived?.call(
               Message(
-                id:
-                    '${DateTime.now().millisecondsSinceEpoch}_logrx_ch${candidate.channelIdx}',
+                id: '${DateTime.now().millisecondsSinceEpoch}_logrx_ch${candidate.channelIdx}',
                 messageType: MessageType.channel,
                 channelIdx: candidate.channelIdx,
                 pathLen: packet.path.length,
@@ -831,18 +848,20 @@ class BleResponseHandler {
             rssiDbm: rssiDbm,
           );
         } else {
-          debugPrint('       GRP_TXT meta: txtType=$txtType attempt=$attempt');
+          _debugLogRxData(
+            '       GRP_TXT meta: txtType=$txtType attempt=$attempt',
+          );
         }
       } else {
         final sampleLen = decrypted.length < 32 ? decrypted.length : 32;
-        debugPrint(
+        _debugLogRxData(
           '       GRP_DATA: ${decrypted.sublist(0, sampleLen).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
         );
       }
       return;
     }
 
-    debugPrint(
+    _debugLogRxData(
       '    🔐 [LogRxData] Could not decrypt channel hash 0x${channelHash.toRadixString(16).padLeft(2, '0')} with ${allCandidates.length} known secrets',
     );
   }
@@ -1112,35 +1131,35 @@ class BleResponseHandler {
   /// Check if received packet is an echo of a sent message
   void _checkForEcho(Uint8List rawPacket, int snrRaw, int rssiDbm) {
     try {
-      debugPrint(
+      _debugLogRxData(
         '  🔍 [Echo] _checkForEcho called, packet size: ${rawPacket.length} bytes',
       );
 
       // Need at least header + path_len
       if (rawPacket.length < 2) {
-        debugPrint('  ⚠️ [Echo] Packet too short');
+        _debugLogRxData('  ⚠️ [Echo] Packet too short');
         return;
       }
 
       final header = rawPacket[0];
       final payloadType = (header >> 2) & 0x0F;
-      debugPrint(
+      _debugLogRxData(
         '  🔍 [Echo] Payload type: 0x${payloadType.toRadixString(16).padLeft(2, '0')}',
       );
       if (payloadType != 0x05) {
-        debugPrint('  ⚠️ [Echo] Not GRP_TXT, ignoring');
+        _debugLogRxData('  ⚠️ [Echo] Not GRP_TXT, ignoring');
         return; // Only track GRP_TXT
       }
 
       final pathDescriptor = rawPacket[1];
       final pathByteLen = _pathByteLength(pathDescriptor);
-      debugPrint(
+      _debugLogRxData(
         '  🔍 [Echo] Path descriptor: 0x${pathDescriptor.toRadixString(16).padLeft(2, '0')}',
       );
       if (pathByteLen == null ||
           pathByteLen == 0 ||
           rawPacket.length < 2 + pathByteLen) {
-        debugPrint('  ⚠️ [Echo] Invalid path length');
+        _debugLogRxData('  ⚠️ [Echo] Invalid path length');
         return;
       }
 
@@ -1173,11 +1192,13 @@ class BleResponseHandler {
           tracker.echoCount++;
           tracker.echoTimestamps.add(DateTime.now());
 
-          debugPrint('  🔊 [Echo] New echo detected!');
-          debugPrint('     Message: ${tracker.messageId}');
-          debugPrint('     Path: $pathSignature');
-          debugPrint('     Total echoes: ${tracker.echoCount}');
-          debugPrint('     Unique paths: ${tracker.uniqueEchoPaths.length}');
+          _debugLogRxData('  🔊 [Echo] New echo detected!');
+          _debugLogRxData('     Message: ${tracker.messageId}');
+          _debugLogRxData('     Path: $pathSignature');
+          _debugLogRxData('     Total echoes: ${tracker.echoCount}');
+          _debugLogRxData(
+            '     Unique paths: ${tracker.uniqueEchoPaths.length}',
+          );
 
           // Notify callback
           onMessageEchoDetected?.call(
@@ -1187,7 +1208,7 @@ class BleResponseHandler {
             rssiDbm,
           );
         } else {
-          debugPrint(
+          _debugLogRxData(
             '  ♻️ [Echo] Duplicate path (already counted): $pathSignature',
           );
         }
@@ -1196,7 +1217,7 @@ class BleResponseHandler {
       // Cleanup expired trackers
       _cleanupExpiredTrackers();
     } catch (e) {
-      debugPrint('  ⚠️ [Echo] Error checking for echo: $e');
+      _debugLogRxData('  ⚠️ [Echo] Error checking for echo: $e');
     }
   }
 
@@ -1271,35 +1292,35 @@ class BleResponseHandler {
     int rssiDbm,
   ) {
     try {
-      debugPrint(
+      _debugLogRxData(
         '  🔍 [Echo] _associatePacketWithSentMessage called, packet size: ${rawPacket.length}',
       );
 
       // Need at least 3 bytes: header + path_len + first path byte
       if (rawPacket.length < 3) {
-        debugPrint('  ⚠️ [Echo] Packet too short for association');
+        _debugLogRxData('  ⚠️ [Echo] Packet too short for association');
         return;
       }
 
       // Check if this is a GRP_TXT packet (payload type = 0x05)
       final header = rawPacket[0];
       final payloadType = (header >> 2) & 0x0F;
-      debugPrint(
+      _debugLogRxData(
         '  🔍 [Echo] Association check - Payload type: 0x${payloadType.toRadixString(16).padLeft(2, '0')}',
       );
       if (payloadType != 0x05) {
         // Not a group message
-        debugPrint('  ⚠️ [Echo] Not GRP_TXT, skipping association');
+        _debugLogRxData('  ⚠️ [Echo] Not GRP_TXT, skipping association');
         return;
       }
 
       final pathDescriptor = rawPacket[1];
       final pathByteLen = _pathByteLength(pathDescriptor);
-      debugPrint(
+      _debugLogRxData(
         '  🔍 [Echo] Path descriptor for association: 0x${pathDescriptor.toRadixString(16).padLeft(2, '0')}',
       );
       if (pathByteLen == null || pathByteLen == 0) {
-        debugPrint('  ⚠️ [Echo] Path length is 0, skipping');
+        _debugLogRxData('  ⚠️ [Echo] Path length is 0, skipping');
         return;
       }
 
@@ -1319,7 +1340,7 @@ class BleResponseHandler {
         return;
       }
 
-      debugPrint(
+      _debugLogRxData(
         '  ✅ [Echo] Packet contains our hash (0x${_ourNodeHash!.toRadixString(16).padLeft(2, '0')}) in path: $pathSignature',
       );
 
@@ -1356,7 +1377,7 @@ class BleResponseHandler {
         );
 
         _sentMessageTrackers[payloadHash] = updatedTracker;
-        debugPrint('  📦 [Echo] Captured packet for tracking!');
+        _debugLogRxData('  📦 [Echo] Captured packet for tracking!');
         debugPrint('     Message ID: ${tracker.messageId}');
         debugPrint('     Path: $pathSignature');
         debugPrint('     Time delta: ${timeSinceSent.inMilliseconds}ms');
@@ -1368,7 +1389,7 @@ class BleResponseHandler {
         break; // Only associate with first pending tracker
       }
     } catch (e) {
-      debugPrint('  ⚠️ [Echo] Error associating packet: $e');
+      _debugLogRxData('  ⚠️ [Echo] Error associating packet: $e');
     }
   }
 
