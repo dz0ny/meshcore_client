@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meshcore_client/src/ble/ble_command_queue.dart';
 import 'package:meshcore_client/src/ble/ble_response_handler.dart';
 import 'package:meshcore_client/src/meshcore_constants.dart';
 import 'package:pointycastle/export.dart';
@@ -237,6 +238,38 @@ void main() {
       expect(seen, isNull);
       expect(echoedMessageId, 'msg-1');
       expect(echoedCount, 1);
+    });
+
+    test('completes queued GET_CHANNEL when CHANNEL_INFO arrives', () async {
+      final handler = BleResponseHandler();
+      final queue = BleCommandQueue();
+      handler.setCommandQueue(queue);
+
+      final future = queue.enqueue<Map<String, dynamic>>(
+        data: Uint8List.fromList([MeshCoreConstants.cmdGetChannel, 0x02]),
+        commandCode: MeshCoreConstants.cmdGetChannel,
+        responseType: CommandResponseType.data,
+        expectedResponseCode: MeshCoreConstants.respChannelInfo,
+        timeout: const Duration(seconds: 1),
+      );
+
+      handler.feedData([
+        MeshCoreConstants.respChannelInfo,
+        0x02,
+        ..._fixedCString('#ops', 32),
+        ...Uint8List.fromList(List<int>.generate(16, (i) => i + 1)),
+      ]);
+
+      await expectLater(
+        future,
+        completion(
+          allOf(
+            containsPair('channelIdx', 2),
+            containsPair('channelName', '#ops'),
+          ),
+        ),
+      );
+      expect(queue.pendingResponseCount, 0);
     });
   });
 }

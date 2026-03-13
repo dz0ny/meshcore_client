@@ -1588,6 +1588,10 @@ class BleResponseHandler {
         debugPrint('     isEmpty: ${channelName.isEmpty}');
         debugPrint('     Callback exists: ${onChannelInfoReceived != null}');
         _rememberChannelSecret(channelIdx, channelName, secret);
+        _commandQueue?.completeCommand<Map<String, dynamic>>(
+          MeshCoreConstants.respChannelInfo,
+          info,
+        );
 
         if (onChannelInfoReceived != null) {
           debugPrint('     🔔 Calling onChannelInfoReceived callback...');
