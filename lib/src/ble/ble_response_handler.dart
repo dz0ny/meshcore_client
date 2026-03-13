@@ -69,7 +69,6 @@ typedef OnAllowedRepeatFreqCallback =
 
 /// Processes incoming responses from the BLE device
 class BleResponseHandler {
-  static const bool _verboseLogRxDataLogging = false;
   StreamSubscription? _txSubscription;
   final List<Contact> _pendingContacts = [];
   int _rxPacketCount = 0;
@@ -125,11 +124,7 @@ class BleResponseHandler {
     );
   }
 
-  void _debugLogRxData(String message) {
-    if (_verboseLogRxDataLogging) {
-      debugPrint(message);
-    }
-  }
+  void _debugLogRxData(String _) {}
 
   // Getters
   int get rxPacketCount => _rxPacketCount;
@@ -179,9 +174,7 @@ class BleResponseHandler {
       );
       final opcodeHex =
           '0x${responseCode.toRadixString(16).padLeft(2, '0').toUpperCase()}';
-      final shouldLogRxFrame =
-          responseCode != MeshCoreConstants.pushLogRxData ||
-          _verboseLogRxDataLogging;
+      final shouldLogRxFrame = responseCode != MeshCoreConstants.pushLogRxData;
 
       if (shouldLogRxFrame) {
         debugPrint('📥 [RX] Received: $opcodeName ($opcodeHex)');
@@ -253,9 +246,6 @@ class BleResponseHandler {
           _handlePathUpdated(reader);
           break;
         case MeshCoreConstants.pushLogRxData:
-          if (_verboseLogRxDataLogging) {
-            debugPrint('  → Handling LogRxData push');
-          }
           _handleLogRxData(reader);
           break;
         case MeshCoreConstants.pushNewAdvert:
