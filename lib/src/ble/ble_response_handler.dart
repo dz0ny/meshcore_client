@@ -179,9 +179,6 @@ class BleResponseHandler {
       if (shouldLogRxFrame) {
         debugPrint('📥 [RX] Received: $opcodeName ($opcodeHex)');
         debugPrint('  Data size: ${data.length} bytes');
-        debugPrint(
-          '  Hex: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-        );
         debugPrint('  Payload: ${reader.remainingBytesCount} bytes');
       }
 

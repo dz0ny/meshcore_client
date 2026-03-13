@@ -146,9 +146,6 @@ class BleCommandSender {
 
       debugPrint('📤 [TX] Sending command: $opcodeName ($opcodeHex)');
       debugPrint('  Data size: ${data.length} bytes');
-      debugPrint(
-        '  Hex: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
-      );
 
       if (_tcpWriteCallback != null) {
         // TCP transport
