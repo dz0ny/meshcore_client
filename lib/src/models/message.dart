@@ -89,6 +89,7 @@ class Message {
   final Uint8List? senderPublicKeyPrefix; // 6 bytes for contact messages
   final int? channelIdx; // For channel messages
   final int pathLen;
+  final Uint8List? pathBytes; // Preserved hop path bytes when available
   final MessageTextType textType;
   final int senderTimestamp; // Unix timestamp
   final String text;
@@ -148,6 +149,7 @@ class Message {
     this.senderPublicKeyPrefix,
     this.channelIdx,
     required this.pathLen,
+    this.pathBytes,
     required this.textType,
     required this.senderTimestamp,
     required this.text,
@@ -340,6 +342,7 @@ class Message {
     Uint8List? senderPublicKeyPrefix,
     int? channelIdx,
     int? pathLen,
+    Uint8List? pathBytes,
     MessageTextType? textType,
     int? senderTimestamp,
     String? text,
@@ -379,6 +382,7 @@ class Message {
           senderPublicKeyPrefix ?? this.senderPublicKeyPrefix,
       channelIdx: channelIdx ?? this.channelIdx,
       pathLen: pathLen ?? this.pathLen,
+      pathBytes: pathBytes ?? this.pathBytes,
       textType: textType ?? this.textType,
       senderTimestamp: senderTimestamp ?? this.senderTimestamp,
       text: text ?? this.text,
