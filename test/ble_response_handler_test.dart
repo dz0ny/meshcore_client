@@ -174,6 +174,70 @@ void main() {
       expect(seen!.senderName, 'alice');
       expect(seen!.text, 'hello team');
     });
+
+    test('does not re-emit our echoed channel message as received', () {
+      final handler = BleResponseHandler();
+      final secret = Uint8List.fromList(List<int>.generate(16, (i) => i + 1));
+      MessageRecord? seen;
+      String? echoedMessageId;
+      int? echoedCount;
+
+      handler.setOurNodeHash(0x55);
+      handler.trackSentMessage('msg-1', null, channelIdx: 2, plainText: 'hello team');
+      handler.onMessageReceived = (message) {
+        seen = MessageRecord(
+          channelIdx: message.channelIdx,
+          senderTimestamp: message.senderTimestamp,
+          text: message.text,
+          senderName: message.senderName,
+        );
+      };
+      handler.onMessageEchoDetected = (messageId, echoCount, snrRaw, rssiDbm) {
+        echoedMessageId = messageId;
+        echoedCount = echoCount;
+      };
+
+      handler.feedData([
+        MeshCoreConstants.respChannelInfo,
+        0x02,
+        ..._fixedCString('#ops', 32),
+        ...secret,
+      ]);
+
+      final plain = Uint8List.fromList([
+        0x04,
+        0x03,
+        0x02,
+        0x01,
+        0x00,
+        ...'alice: hello team'.codeUnits,
+        0x00,
+        ...List<int>.filled(32, 0),
+      ]);
+      final paddedPlain = Uint8List.fromList(plain.sublist(0, 32));
+      final encrypted = _aes128EcbEncrypt(secret, paddedPlain);
+      final mac = _packetMac(secret, encrypted);
+      final channelHash = crypto.sha256.convert(secret).bytes.first;
+      final rawPacket = Uint8List.fromList([
+        0x15,
+        0x01,
+        0x55,
+        channelHash,
+        ...mac,
+        ...encrypted,
+      ]);
+
+      handler.feedData([
+        MeshCoreConstants.pushLogRxData,
+        0x10,
+        0x9c,
+        ...rawPacket,
+      ]);
+
+      expect(seen, isNull);
+      expect(echoedMessageId, 'msg-1');
+      expect(echoedCount, 1);
+    });
   });
 }
 

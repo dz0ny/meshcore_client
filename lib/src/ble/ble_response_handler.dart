@@ -740,6 +740,10 @@ class BleResponseHandler {
     return normalized & 0x3F;
   }
 
+  bool _pathContainsOurNodeHash(Uint8List path) {
+    return _ourNodeHash != null && path.contains(_ourNodeHash!);
+  }
+
   void _tryDecodeGroupPacket(_ParsedRawPacket packet, int snrRaw, int rssiDbm) {
     if (!(packet.payloadType == 0x05 || packet.payloadType == 0x06)) return;
     if (packet.payload.length < 3) return;
@@ -797,20 +801,28 @@ class BleResponseHandler {
         if (txtType == 0) {
           final text = _decodeCString(decrypted, 5);
           final parsedText = _splitChannelSenderText(text);
+          final isOwnEcho = _pathContainsOurNodeHash(packet.path);
           debugPrint('       Text: $text');
-          onMessageReceived?.call(
-            Message(
-              id: '${DateTime.now().millisecondsSinceEpoch}_logrx_ch${candidate.channelIdx}',
-              messageType: MessageType.channel,
-              channelIdx: candidate.channelIdx,
-              pathLen: packet.path.length,
-              textType: MessageTextType.plain,
-              senderTimestamp: ts,
-              text: parsedText.$2,
-              senderName: parsedText.$1,
-              receivedAt: DateTime.now(),
-            ),
-          );
+          if (isOwnEcho) {
+            debugPrint(
+              '       ↩️ [LogRxData] Skipping received callback for our echoed channel message',
+            );
+          } else {
+            onMessageReceived?.call(
+              Message(
+                id:
+                    '${DateTime.now().millisecondsSinceEpoch}_logrx_ch${candidate.channelIdx}',
+                messageType: MessageType.channel,
+                channelIdx: candidate.channelIdx,
+                pathLen: packet.path.length,
+                textType: MessageTextType.plain,
+                senderTimestamp: ts,
+                text: parsedText.$2,
+                senderName: parsedText.$1,
+                receivedAt: DateTime.now(),
+              ),
+            );
+          }
           _associateDecodedGroupPacket(
             channelIdx: candidate.channelIdx,
             decodedText: parsedText.$2,
