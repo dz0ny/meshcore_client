@@ -158,6 +158,10 @@ abstract class MeshCoreServiceBase {
   });
 
   Future<void> sendStatusRequest(Uint8List contactPublicKey);
+  Future<({int tag, int suggestedTimeoutMs})> sendAnonRequest({
+    required Uint8List contactPublicKey,
+    required Uint8List requestData,
+  });
   Future<void> getChannel(int channelIdx);
   Future<void> setChannel({
     required int channelIdx,

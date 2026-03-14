@@ -332,6 +332,18 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build SendAnonReq command
+  static Uint8List buildSendAnonReq({
+    required Uint8List contactPublicKey,
+    required Uint8List requestData,
+  }) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSendAnonReq);
+    writer.writeBytes(contactPublicKey);
+    writer.writeBytes(requestData);
+    return writer.toBytes();
+  }
+
   /// Build SendControlData command (firmware v8+)
   static Uint8List buildSendControlData(Uint8List payload) {
     final writer = BufferWriter();

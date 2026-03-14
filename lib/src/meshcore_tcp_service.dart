@@ -683,6 +683,25 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
       .writeData(FrameBuilder.buildSendStatusReq(contactPublicKey));
 
   @override
+  Future<({int tag, int suggestedTimeoutMs})> sendAnonRequest({
+    required Uint8List contactPublicKey,
+    required Uint8List requestData,
+  }) async {
+    final result = await _commandSender
+        .writeDataAndWaitForResponse<Map<String, dynamic>>(
+          FrameBuilder.buildSendAnonReq(
+            contactPublicKey: contactPublicKey,
+            requestData: requestData,
+          ),
+          MeshCoreConstants.respSent,
+        );
+    return (
+      tag: result['expectedAckTag'] as int,
+      suggestedTimeoutMs: result['suggestedTimeout'] as int,
+    );
+  }
+
+  @override
   Future<void> getChannel(int channelIdx) =>
       _commandSender.writeDataAndWaitForResponse<Map<String, dynamic>>(
         FrameBuilder.buildGetChannel(channelIdx),

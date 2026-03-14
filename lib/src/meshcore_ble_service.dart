@@ -781,6 +781,30 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     );
   }
 
+  @override
+  Future<({int tag, int suggestedTimeoutMs})> sendAnonRequest({
+    required Uint8List contactPublicKey,
+    required Uint8List requestData,
+  }) async {
+    debugPrint('🕵️ [BLE] Preparing anonymous request:');
+    debugPrint(
+      '    Target node public key prefix: ${contactPublicKey.sublist(0, 6).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':')}',
+    );
+
+    final result = await _commandSender
+        .writeDataAndWaitForResponse<Map<String, dynamic>>(
+          FrameBuilder.buildSendAnonReq(
+            contactPublicKey: contactPublicKey,
+            requestData: requestData,
+          ),
+          MeshCoreConstants.respSent,
+        );
+    return (
+      tag: result['expectedAckTag'] as int,
+      suggestedTimeoutMs: result['suggestedTimeout'] as int,
+    );
+  }
+
   /// Reset path for a contact - forces next message to flood and re-learn route
   Future<void> resetPath(Uint8List contactPublicKey) async {
     debugPrint('🔄 [BLE] Resetting path for contact:');
