@@ -43,6 +43,7 @@ abstract class MeshCoreServiceBase {
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
   OnRawDataReceivedCallback? onRawDataReceived;
+  OnControlDataCallback? onControlDataReceived;
   VoidCallback? onRxActivity;
   VoidCallback? onTxActivity;
   OnReconnectionAttemptCallback? onReconnectionAttempt;
@@ -102,6 +103,8 @@ abstract class MeshCoreServiceBase {
     required Uint8List contactPublicKey,
     required Uint8List requestData,
   });
+
+  Future<void> sendControlData(Uint8List payload);
 
   Future<void> syncNextMessage();
   Future<void> getDeviceTime();

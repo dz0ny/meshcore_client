@@ -136,6 +136,7 @@ class MeshCoreConstants {
   static const int advTypeChat = 1;
   static const int advTypeRepeater = 2;
   static const int advTypeRoom = 3;
+  static const int advTypeSensor = 4;
 
   // Self Advert Types
   static const int selfAdvertZeroHop = 0;

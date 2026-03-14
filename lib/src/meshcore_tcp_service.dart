@@ -143,6 +143,8 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
         onStatusResponse?.call(pk, data);
     _responseHandler.onBinaryResponse = (pk, tag, data) =>
         onBinaryResponse?.call(pk, tag, data);
+    _responseHandler.onControlDataReceived = (payload, snr, rssi, pathLen) =>
+        onControlDataReceived?.call(payload, snr, rssi, pathLen);
     _responseHandler.onBatteryAndStorage = (mv, used, total) =>
         onBatteryAndStorage?.call(mv, used, total);
     _responseHandler.onError = (err, {int? errorCode}) =>
@@ -484,6 +486,10 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
       requestData: requestData,
     ),
   );
+
+  @override
+  Future<void> sendControlData(Uint8List payload) =>
+      _commandSender.writeData(FrameBuilder.buildSendControlData(payload));
 
   @override
   Future<void> syncNextMessage() => _guardSpectrumScan(

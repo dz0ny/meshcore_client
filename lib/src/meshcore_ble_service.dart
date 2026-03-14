@@ -48,6 +48,8 @@ typedef OnStatusResponseCallback =
     void Function(Uint8List publicKeyPrefix, Uint8List statusData);
 typedef OnBinaryResponseCallback =
     void Function(Uint8List publicKeyPrefix, int tag, Uint8List responseData);
+typedef OnControlDataCallback =
+    void Function(Uint8List payload, int snrRaw, int rssiDbm, int pathLen);
 typedef OnBatteryAndStorageCallback =
     void Function(int millivolts, int? usedKb, int? totalKb);
 typedef OnErrorCallback = void Function(String error, {int? errorCode});
@@ -112,6 +114,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   OnMessageEchoDetectedCallback? onMessageEchoDetected;
   OnStatusResponseCallback? onStatusResponse;
   OnBinaryResponseCallback? onBinaryResponse;
+  OnControlDataCallback? onControlDataReceived;
   OnBatteryAndStorageCallback? onBatteryAndStorage;
   OnErrorCallback? onError;
   OnContactNotFoundCallback? onContactNotFound;
@@ -258,6 +261,10 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     _responseHandler.onBinaryResponse = (publicKeyPrefix, tag, responseData) {
       onBinaryResponse?.call(publicKeyPrefix, tag, responseData);
     };
+    _responseHandler.onControlDataReceived =
+        (payload, snrRaw, rssiDbm, pathLen) {
+          onControlDataReceived?.call(payload, snrRaw, rssiDbm, pathLen);
+        };
     _responseHandler.onBatteryAndStorage = (millivolts, usedKb, totalKb) {
       onBatteryAndStorage?.call(millivolts, usedKb, totalKb);
     };
@@ -527,6 +534,11 @@ class MeshCoreBleService extends MeshCoreServiceBase {
         requestData: requestData,
       ),
     );
+  }
+
+  /// Send control/discovery packet (firmware v8+).
+  Future<void> sendControlData(Uint8List payload) async {
+    await _commandSender.writeData(FrameBuilder.buildSendControlData(payload));
   }
 
   /// Send a raw binary packet to a direct contact.

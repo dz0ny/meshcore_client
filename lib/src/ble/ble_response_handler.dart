@@ -66,6 +66,8 @@ typedef OnRawDataReceivedCallback =
     void Function(Uint8List payload, int snrRaw, int rssiDbm);
 typedef OnAllowedRepeatFreqCallback =
     void Function(List<({int lower, int upper})> ranges);
+typedef OnControlDataCallback =
+    void Function(Uint8List payload, int snrRaw, int rssiDbm, int pathLen);
 
 /// Processes incoming responses from the BLE device
 class BleResponseHandler {
@@ -108,6 +110,7 @@ class BleResponseHandler {
   OnMessageEchoDetectedCallback? onMessageEchoDetected;
   OnRawDataReceivedCallback? onRawDataReceived;
   OnAllowedRepeatFreqCallback? onAllowedRepeatFreqReceived;
+  OnControlDataCallback? onControlDataReceived;
   VoidCallback? onRxActivity;
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
@@ -301,7 +304,8 @@ class BleResponseHandler {
           _handleRawData(reader);
           break;
         case MeshCoreConstants.pushControlData:
-          debugPrint('  → Control data push (not yet handled)');
+          debugPrint('  → Handling ControlData push');
+          _handleControlData(reader);
           break;
         case MeshCoreConstants.pushContactDeleted:
           debugPrint('  → Handling ContactDeleted push');
@@ -344,6 +348,20 @@ class BleResponseHandler {
       '  📡 [RawData] ${payload.length} bytes, SNR=$snrRaw, RSSI=$rssiDbm',
     );
     onRawDataReceived?.call(payload, snrRaw, rssiDbm);
+  }
+
+  /// Handle ControlData push (pushControlData = 0x8E)
+  /// Format: [snr:int8][rssi:int8][path_len:uint8][payload...]
+  void _handleControlData(BufferReader reader) {
+    if (reader.remainingBytesCount < 3) return;
+    final snrRaw = reader.readInt8();
+    final rssiDbm = reader.readInt8();
+    final pathLen = reader.readByte();
+    final payload = reader.readRemainingBytes();
+    debugPrint(
+      '  🛰️ [ControlData] ${payload.length} bytes, SNR=$snrRaw, RSSI=$rssiDbm, pathLen=$pathLen',
+    );
+    onControlDataReceived?.call(payload, snrRaw, rssiDbm, pathLen);
   }
 
   /// Handle ContactsStart response

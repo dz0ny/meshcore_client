@@ -307,6 +307,14 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build SendControlData command (firmware v8+)
+  static Uint8List buildSendControlData(Uint8List payload) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSendControlData);
+    writer.writeBytes(payload);
+    return writer.toBytes();
+  }
+
   /// Build ResetPath command - clears learned path for a contact
   static Uint8List buildResetPath(Uint8List contactPublicKey) {
     final writer = BufferWriter();
