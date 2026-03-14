@@ -68,6 +68,7 @@ typedef OnAllowedRepeatFreqCallback =
     void Function(List<({int lower, int upper})> ranges);
 typedef OnControlDataCallback =
     void Function(Uint8List payload, int snrRaw, int rssiDbm, int pathLen);
+typedef OnAutoaddConfigCallback = void Function(Map<String, dynamic> config);
 
 /// Processes incoming responses from the BLE device
 class BleResponseHandler {
@@ -111,6 +112,7 @@ class BleResponseHandler {
   OnRawDataReceivedCallback? onRawDataReceived;
   OnAllowedRepeatFreqCallback? onAllowedRepeatFreqReceived;
   OnControlDataCallback? onControlDataReceived;
+  OnAutoaddConfigCallback? onAutoaddConfigReceived;
   VoidCallback? onRxActivity;
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
@@ -287,6 +289,10 @@ class BleResponseHandler {
         case MeshCoreConstants.respAllowedRepeatFreq:
           debugPrint('  → Handling AllowedRepeatFreq');
           _handleAllowedRepeatFreq(reader);
+          break;
+        case MeshCoreConstants.respAutoaddConfig:
+          debugPrint('  → Handling AutoaddConfig');
+          _handleAutoaddConfig(reader);
           break;
         case MeshCoreConstants.respSpectrumScan:
           debugPrint('  → Handling SpectrumScan');
@@ -1642,6 +1648,24 @@ class BleResponseHandler {
     } catch (e) {
       debugPrint('  ❌ [AllowedRepeatFreq] Parsing error: $e');
       onError?.call('AllowedRepeatFreq parsing error: $e');
+    }
+  }
+
+  void _handleAutoaddConfig(BufferReader reader) {
+    try {
+      final config = FrameParser.parseAutoaddConfig(reader);
+      debugPrint('  ✅ [AutoaddConfig] Parsed successfully');
+      _commandQueue?.completeCommand<Map<String, dynamic>>(
+        MeshCoreConstants.respAutoaddConfig,
+        config,
+      );
+      onAutoaddConfigReceived?.call(config);
+    } catch (e) {
+      debugPrint('  ❌ [AutoaddConfig] Parsing error: $e');
+      onError?.call('AutoaddConfig parsing error: $e');
+      _commandQueue?.completeCurrentCommandWithError(
+        'AutoaddConfig parsing error: $e',
+      );
     }
   }
 

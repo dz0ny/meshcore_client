@@ -435,6 +435,17 @@ class FrameParser {
     };
   }
 
+  static Map<String, dynamic> parseAutoaddConfig(BufferReader reader) {
+    final flags = reader.readByte();
+    return {
+      'autoAddUsers': (flags & 0x02) != 0,
+      'autoAddRepeaters': (flags & 0x04) != 0,
+      'autoAddRoomServers': (flags & 0x08) != 0,
+      'autoAddSensors': (flags & 0x10) != 0,
+      'autoAddOverwriteOldest': (flags & 0x01) != 0,
+    };
+  }
+
   /// Parse Advert push
   static Uint8List? parseAdvert(BufferReader reader) {
     if (reader.remainingBytesCount >= 32) {

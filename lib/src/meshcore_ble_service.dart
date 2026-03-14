@@ -287,6 +287,9 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     _responseHandler.onAllowedRepeatFreqReceived = (ranges) {
       onAllowedRepeatFreqReceived?.call(ranges);
     };
+    _responseHandler.onAutoaddConfigReceived = (config) {
+      onAutoaddConfigReceived?.call(config);
+    };
     _responseHandler.onRawDataReceived = (payload, snrRaw, rssiDbm) {
       onRawDataReceived?.call(payload, snrRaw, rssiDbm);
     };
@@ -710,6 +713,33 @@ class MeshCoreBleService extends MeshCoreServiceBase {
         telemetryModes: telemetryModes,
         advertLocationPolicy: advertLocationPolicy,
         multiAcks: multiAcks,
+      ),
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> getAutoaddConfig() {
+    return _commandSender.writeDataAndWaitForResponse<Map<String, dynamic>>(
+      FrameBuilder.buildGetAutoaddConfig(),
+      MeshCoreConstants.respAutoaddConfig,
+    );
+  }
+
+  @override
+  Future<void> setAutoaddConfig({
+    required bool autoAddUsers,
+    required bool autoAddRepeaters,
+    required bool autoAddRoomServers,
+    required bool autoAddSensors,
+    required bool overwriteOldest,
+  }) async {
+    await _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildSetAutoaddConfig(
+        autoAddUsers: autoAddUsers,
+        autoAddRepeaters: autoAddRepeaters,
+        autoAddRoomServers: autoAddRoomServers,
+        autoAddSensors: autoAddSensors,
+        overwriteOldest: overwriteOldest,
       ),
     );
   }

@@ -286,6 +286,31 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  static Uint8List buildSetAutoaddConfig({
+    required bool autoAddUsers,
+    required bool autoAddRepeaters,
+    required bool autoAddRoomServers,
+    required bool autoAddSensors,
+    required bool overwriteOldest,
+  }) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSetAutoaddConfig);
+    var flags = 0;
+    if (overwriteOldest) flags |= 0x01;
+    if (autoAddUsers) flags |= 0x02;
+    if (autoAddRepeaters) flags |= 0x04;
+    if (autoAddRoomServers) flags |= 0x08;
+    if (autoAddSensors) flags |= 0x10;
+    writer.writeByte(flags);
+    return writer.toBytes();
+  }
+
+  static Uint8List buildGetAutoaddConfig() {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdGetAutoaddConfig);
+    return writer.toBytes();
+  }
+
   /// Build SendLogin command
   static Uint8List buildSendLogin({
     required Uint8List roomPublicKey,

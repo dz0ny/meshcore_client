@@ -156,6 +156,8 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     _responseHandler.onContactsFull = () => onContactsFull?.call();
     _responseHandler.onAllowedRepeatFreqReceived = (ranges) =>
         onAllowedRepeatFreqReceived?.call(ranges);
+    _responseHandler.onAutoaddConfigReceived = (config) =>
+        onAutoaddConfigReceived?.call(config);
     _responseHandler.onRawDataReceived = (payload, snr, rssi) =>
         onRawDataReceived?.call(payload, snr, rssi);
     _responseHandler.onRxActivity = () => onRxActivity?.call();
@@ -608,6 +610,30 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
       telemetryModes: telemetryModes,
       advertLocationPolicy: advertLocationPolicy,
       multiAcks: multiAcks,
+    ),
+  );
+
+  @override
+  Future<Map<String, dynamic>> getAutoaddConfig() => _commandSender
+      .writeDataAndWaitForResponse<Map<String, dynamic>>(
+        FrameBuilder.buildGetAutoaddConfig(),
+        MeshCoreConstants.respAutoaddConfig,
+      );
+
+  @override
+  Future<void> setAutoaddConfig({
+    required bool autoAddUsers,
+    required bool autoAddRepeaters,
+    required bool autoAddRoomServers,
+    required bool autoAddSensors,
+    required bool overwriteOldest,
+  }) => _commandSender.writeDataAndWaitForAck(
+    FrameBuilder.buildSetAutoaddConfig(
+      autoAddUsers: autoAddUsers,
+      autoAddRepeaters: autoAddRepeaters,
+      autoAddRoomServers: autoAddRoomServers,
+      autoAddSensors: autoAddSensors,
+      overwriteOldest: overwriteOldest,
     ),
   );
 

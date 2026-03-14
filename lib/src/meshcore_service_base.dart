@@ -44,6 +44,7 @@ abstract class MeshCoreServiceBase {
   VoidCallback? onContactsFull;
   OnRawDataReceivedCallback? onRawDataReceived;
   OnControlDataCallback? onControlDataReceived;
+  OnAutoaddConfigCallback? onAutoaddConfigReceived;
   VoidCallback? onRxActivity;
   VoidCallback? onTxActivity;
   OnReconnectionAttemptCallback? onReconnectionAttempt;
@@ -139,6 +140,14 @@ abstract class MeshCoreServiceBase {
     required int telemetryModes,
     required int advertLocationPolicy,
     int multiAcks = 0,
+  });
+  Future<Map<String, dynamic>> getAutoaddConfig();
+  Future<void> setAutoaddConfig({
+    required bool autoAddUsers,
+    required bool autoAddRepeaters,
+    required bool autoAddRoomServers,
+    required bool autoAddSensors,
+    required bool overwriteOldest,
   });
 
   Future<void> refreshDeviceInfo();
