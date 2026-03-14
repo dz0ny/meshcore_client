@@ -422,9 +422,11 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     );
     debugPrint('    Type: ${contact.type} (${contact.type.value})');
 
-    await _commandSender.writeData(FrameBuilder.buildAddUpdateContact(contact));
+    await _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildAddUpdateContact(contact),
+    );
 
-    debugPrint('✅ [BLE] CMD_ADD_UPDATE_CONTACT sent');
+    debugPrint('✅ [BLE] CMD_ADD_UPDATE_CONTACT acknowledged');
   }
 
   /// Send text message to contact (DM)
@@ -781,8 +783,10 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   /// The secret must be exactly 16 bytes (128-bit encryption key).
   /// For the default public channel (channel 0), use [MeshCoreConstants.defaultPublicChannelSecret].
   ///
-  /// Note: Some firmware versions don't send ACK for SET_CHANNEL, so we use
-  /// fire-and-forget and then verify with GET_CHANNEL.
+  /// Set or update a channel on the companion radio.
+  ///
+  /// Firmware replies with RESP_CODE_OK on success or RESP_CODE_ERR on failure
+  /// (e.g. invalid channel index).
   Future<void> setChannel({
     required int channelIdx,
     required String channelName,
@@ -796,7 +800,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
       '    Secret hex: ${secret.map((b) => b.toRadixString(16).padLeft(2, '0')).join('')}',
     );
 
-    // Send SET_CHANNEL command (fire-and-forget, no ACK expected)
     final setChannelData = FrameBuilder.buildSetChannel(
       channelIdx: channelIdx,
       channelName: channelName,
@@ -806,15 +809,8 @@ class MeshCoreBleService extends MeshCoreServiceBase {
       '    SET_CHANNEL data (${setChannelData.length} bytes): ${setChannelData.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
     );
 
-    await _commandSender.writeData(setChannelData);
-    debugPrint('✅ [BLE] CMD_SET_CHANNEL sent');
-
-    // Wait a bit for the device to process
-    await Future.delayed(const Duration(milliseconds: 200));
-
-    // Verify the channel was set by reading it back
-    debugPrint('🔍 [BLE] Verifying channel was set...');
-    await getChannel(channelIdx);
+    await _commandSender.writeDataAndWaitForAck(setChannelData);
+    debugPrint('✅ [BLE] CMD_SET_CHANNEL acknowledged');
   }
 
   /// Delete a channel by clearing its slot
