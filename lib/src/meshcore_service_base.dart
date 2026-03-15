@@ -65,6 +65,7 @@ abstract class MeshCoreServiceBase {
 
   Future<void> getContacts();
   Future<void> getContactByKey(Uint8List publicKey);
+  Future<void> importContact(Uint8List contactAdvertFrame);
   Future<void> addOrUpdateContact(Contact contact);
   Future<void> removeContact(Uint8List contactPublicKey);
   Future<void> resetPath(Uint8List contactPublicKey);

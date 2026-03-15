@@ -360,6 +360,14 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build ImportContact command - imports an exported advert/contact blob
+  static Uint8List buildImportContact(Uint8List contactAdvertFrame) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdImportContact); // 0x12 (18)
+    writer.writeBytes(contactAdvertFrame);
+    return writer.toBytes();
+  }
+
   /// Build FactoryReset command - erases device data and restores defaults
   static Uint8List buildFactoryReset() {
     final writer = BufferWriter();

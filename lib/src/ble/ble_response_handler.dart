@@ -117,8 +117,10 @@ class BleResponseHandler {
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
 
-  // Track the last command that was sent, so we can retry if it fails with ERR_CODE_NOT_FOUND
+  // Track command context so ERR_CODE_NOT_FOUND can be correlated to the
+  // lookup or direct-message request that triggered it.
   Uint8List? _lastContactPublicKey;
+  Uint8List? _lastLookupContactPublicKey;
   final ListQueue<Uint8List> _pendingDirectMessageContacts = ListQueue();
 
   BleResponseHandler() {
@@ -384,7 +386,12 @@ class BleResponseHandler {
       debugPrint(
         '     outPathLen: ${contact.outPathLen} (${contact.pathDescription})',
       );
+      _lastLookupContactPublicKey = null;
       _pendingContacts.add(contact);
+      _commandQueue?.completeCommand<Contact>(
+        MeshCoreConstants.respContact,
+        contact,
+      );
       onContactReceived?.call(contact);
     } catch (e) {
       debugPrint('  ❌ [Contact] Parsing error: $e');
@@ -394,7 +401,12 @@ class BleResponseHandler {
 
   /// Handle EndOfContacts response
   void _handleEndOfContacts(BufferReader reader) {
-    onContactsComplete?.call(List.from(_pendingContacts));
+    final contacts = List<Contact>.from(_pendingContacts);
+    _commandQueue?.completeCommand<List<Contact>>(
+      MeshCoreConstants.respEndOfContacts,
+      contacts,
+    );
+    onContactsComplete?.call(contacts);
     _pendingContacts.clear();
   }
 
@@ -1709,7 +1721,9 @@ class BleResponseHandler {
             '  ⚠️ [Error] Contact not found in radio - attempting auto-recovery',
           );
           onContactNotFound?.call(
-            _dequeuePendingDirectMessageContact() ?? _lastContactPublicKey,
+            _dequeuePendingDirectMessageContact() ??
+                _consumeLastLookupContactPublicKey() ??
+                _lastContactPublicKey,
           );
         }
 
@@ -1727,6 +1741,16 @@ class BleResponseHandler {
       return;
     }
     _lastContactPublicKey = Uint8List.fromList(publicKey);
+  }
+
+  /// Track the last single-contact lookup so ERR_NOT_FOUND can be attributed
+  /// to GET_CONTACT_BY_KEY instead of the next queued command.
+  void setLastLookupContactPublicKey(Uint8List? publicKey) {
+    if (publicKey == null) {
+      _lastLookupContactPublicKey = null;
+      return;
+    }
+    _lastLookupContactPublicKey = Uint8List.fromList(publicKey);
   }
 
   /// Queue a direct-message recipient so RESP_SENT / ERR responses can be
@@ -1761,6 +1785,12 @@ class BleResponseHandler {
         ? null
         : _pendingDirectMessageContacts.last;
     return contactPublicKey;
+  }
+
+  Uint8List? _consumeLastLookupContactPublicKey() {
+    final publicKey = _lastLookupContactPublicKey;
+    _lastLookupContactPublicKey = null;
+    return publicKey;
   }
 
   bool _samePublicKey(Uint8List left, Uint8List right) {

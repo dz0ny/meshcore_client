@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meshcore_client/src/ble/ble_command_queue.dart';
 import 'package:meshcore_client/src/ble/ble_response_handler.dart';
 import 'package:meshcore_client/src/meshcore_constants.dart';
+import 'package:meshcore_client/src/models/contact.dart';
 import 'package:pointycastle/export.dart';
 
 void main() {
@@ -39,35 +40,58 @@ void main() {
       expect(seen[1], orderedEquals(second));
     });
 
-    test('correlates ERR_NOT_FOUND to the oldest queued direct-message contact', () {
-      final handler = BleResponseHandler();
-      final first = Uint8List.fromList(List<int>.generate(32, (i) => i));
-      final second = Uint8List.fromList(List<int>.generate(32, (i) => 255 - i));
-      Uint8List? missingContact;
-      Uint8List? sentContact;
+    test(
+      'correlates ERR_NOT_FOUND to the oldest queued direct-message contact',
+      () {
+        final handler = BleResponseHandler();
+        final first = Uint8List.fromList(List<int>.generate(32, (i) => i));
+        final second = Uint8List.fromList(
+          List<int>.generate(32, (i) => 255 - i),
+        );
+        Uint8List? missingContact;
+        Uint8List? sentContact;
 
-      handler.queuePendingDirectMessageContact(first);
-      handler.queuePendingDirectMessageContact(second);
+        handler.queuePendingDirectMessageContact(first);
+        handler.queuePendingDirectMessageContact(second);
+        handler.onContactNotFound = (contactPublicKey) {
+          missingContact = contactPublicKey;
+        };
+        handler.onMessageSent = (tag, timeout, isFloodMode, contactPublicKey) {
+          sentContact = contactPublicKey;
+        };
+
+        handler.feedData([
+          MeshCoreConstants.respErr,
+          MeshCoreConstants.errNotFound,
+        ]);
+        handler.feedData([
+          MeshCoreConstants.respSent,
+          0x00, // direct send
+          0x99, 0x88, 0x77, 0x66,
+          0x30, 0x00, 0x00, 0x00,
+        ]);
+
+        expect(missingContact, orderedEquals(first));
+        expect(sentContact, orderedEquals(second));
+      },
+    );
+
+    test('correlates ERR_NOT_FOUND to the last lookup contact', () {
+      final handler = BleResponseHandler();
+      final missing = Uint8List.fromList(List<int>.generate(32, (i) => i + 1));
+      Uint8List? missingContact;
+
+      handler.setLastLookupContactPublicKey(missing);
       handler.onContactNotFound = (contactPublicKey) {
         missingContact = contactPublicKey;
-      };
-      handler.onMessageSent = (tag, timeout, isFloodMode, contactPublicKey) {
-        sentContact = contactPublicKey;
       };
 
       handler.feedData([
         MeshCoreConstants.respErr,
         MeshCoreConstants.errNotFound,
       ]);
-      handler.feedData([
-        MeshCoreConstants.respSent,
-        0x00, // direct send
-        0x99, 0x88, 0x77, 0x66,
-        0x30, 0x00, 0x00, 0x00,
-      ]);
 
-      expect(missingContact, orderedEquals(first));
-      expect(sentContact, orderedEquals(second));
+      expect(missingContact, orderedEquals(missing));
     });
 
     test('labels LOG_RX_DATA response packets like meshcore-open', () {
@@ -117,64 +141,67 @@ void main() {
       );
     });
 
-    test('emits received channel message from decrypted LOG_RX_DATA GRP_TXT', () {
-      final handler = BleResponseHandler();
-      final secret = Uint8List.fromList(List<int>.generate(16, (i) => i + 1));
-      MessageRecord? seen;
+    test(
+      'emits received channel message from decrypted LOG_RX_DATA GRP_TXT',
+      () {
+        final handler = BleResponseHandler();
+        final secret = Uint8List.fromList(List<int>.generate(16, (i) => i + 1));
+        MessageRecord? seen;
 
-      handler.onMessageReceived = (message) {
-        seen = MessageRecord(
-          channelIdx: message.channelIdx,
-          senderTimestamp: message.senderTimestamp,
-          text: message.text,
-          senderName: message.senderName,
-        );
-      };
+        handler.onMessageReceived = (message) {
+          seen = MessageRecord(
+            channelIdx: message.channelIdx,
+            senderTimestamp: message.senderTimestamp,
+            text: message.text,
+            senderName: message.senderName,
+          );
+        };
 
-      handler.feedData([
-        MeshCoreConstants.respChannelInfo,
-        0x02,
-        ..._fixedCString('#ops', 32),
-        ...secret,
-      ]);
+        handler.feedData([
+          MeshCoreConstants.respChannelInfo,
+          0x02,
+          ..._fixedCString('#ops', 32),
+          ...secret,
+        ]);
 
-      final senderTimestamp = 0x01020304;
-      final plain = Uint8List.fromList([
-        0x04,
-        0x03,
-        0x02,
-        0x01,
-        0x00,
-        ...'alice: hello team'.codeUnits,
-        0x00,
-        ...List<int>.filled(32, 0),
-      ]);
-      final paddedPlain = Uint8List.fromList(plain.sublist(0, 32));
-      final encrypted = _aes128EcbEncrypt(secret, paddedPlain);
-      final mac = _packetMac(secret, encrypted);
-      final channelHash = crypto.sha256.convert(secret).bytes.first;
-      final rawPacket = Uint8List.fromList([
-        0x15,
-        0x01,
-        0x55,
-        channelHash,
-        ...mac,
-        ...encrypted,
-      ]);
+        final senderTimestamp = 0x01020304;
+        final plain = Uint8List.fromList([
+          0x04,
+          0x03,
+          0x02,
+          0x01,
+          0x00,
+          ...'alice: hello team'.codeUnits,
+          0x00,
+          ...List<int>.filled(32, 0),
+        ]);
+        final paddedPlain = Uint8List.fromList(plain.sublist(0, 32));
+        final encrypted = _aes128EcbEncrypt(secret, paddedPlain);
+        final mac = _packetMac(secret, encrypted);
+        final channelHash = crypto.sha256.convert(secret).bytes.first;
+        final rawPacket = Uint8List.fromList([
+          0x15,
+          0x01,
+          0x55,
+          channelHash,
+          ...mac,
+          ...encrypted,
+        ]);
 
-      handler.feedData([
-        MeshCoreConstants.pushLogRxData,
-        0x10,
-        0x9c,
-        ...rawPacket,
-      ]);
+        handler.feedData([
+          MeshCoreConstants.pushLogRxData,
+          0x10,
+          0x9c,
+          ...rawPacket,
+        ]);
 
-      expect(seen, isNotNull);
-      expect(seen!.channelIdx, 2);
-      expect(seen!.senderTimestamp, senderTimestamp);
-      expect(seen!.senderName, 'alice');
-      expect(seen!.text, 'hello team');
-    });
+        expect(seen, isNotNull);
+        expect(seen!.channelIdx, 2);
+        expect(seen!.senderTimestamp, senderTimestamp);
+        expect(seen!.senderName, 'alice');
+        expect(seen!.text, 'hello team');
+      },
+    );
 
     test('does not re-emit our echoed channel message as received', () {
       final handler = BleResponseHandler();
@@ -184,7 +211,12 @@ void main() {
       int? echoedCount;
 
       handler.setOurNodeHash(0x55);
-      handler.trackSentMessage('msg-1', null, channelIdx: 2, plainText: 'hello team');
+      handler.trackSentMessage(
+        'msg-1',
+        null,
+        channelIdx: 2,
+        plainText: 'hello team',
+      );
       handler.onMessageReceived = (message) {
         seen = MessageRecord(
           channelIdx: message.channelIdx,
@@ -271,6 +303,71 @@ void main() {
       );
       expect(queue.pendingResponseCount, 0);
     });
+
+    test('completes queued GET_CONTACT_BY_KEY when CONTACT arrives', () async {
+      final handler = BleResponseHandler();
+      final queue = BleCommandQueue();
+      handler.setCommandQueue(queue);
+      final publicKey = Uint8List.fromList(List<int>.generate(32, (i) => i));
+
+      final future = queue.enqueue<Contact>(
+        data: Uint8List.fromList([
+          MeshCoreConstants.cmdGetContactByKey,
+          ...publicKey,
+        ]),
+        commandCode: MeshCoreConstants.cmdGetContactByKey,
+        responseType: CommandResponseType.data,
+        expectedResponseCode: MeshCoreConstants.respContact,
+        timeout: const Duration(seconds: 1),
+      );
+
+      handler.feedData(_contactFrame(publicKey, name: 'AT-W-St.Marx'));
+
+      await expectLater(
+        future,
+        completion(
+          isA<Contact>()
+              .having((contact) => contact.advName, 'advName', 'AT-W-St.Marx')
+              .having(
+                (contact) => contact.publicKey,
+                'publicKey',
+                orderedEquals(publicKey),
+              ),
+        ),
+      );
+      expect(queue.pendingResponseCount, 0);
+    });
+
+    test(
+      'completes queued GET_CONTACTS when END_OF_CONTACTS arrives',
+      () async {
+        final handler = BleResponseHandler();
+        final queue = BleCommandQueue();
+        handler.setCommandQueue(queue);
+        final publicKey = Uint8List.fromList(List<int>.generate(32, (i) => i));
+
+        final future = queue.enqueue<List<Contact>>(
+          data: Uint8List.fromList([MeshCoreConstants.cmdGetContacts]),
+          commandCode: MeshCoreConstants.cmdGetContacts,
+          responseType: CommandResponseType.data,
+          expectedResponseCode: MeshCoreConstants.respEndOfContacts,
+          timeout: const Duration(seconds: 1),
+        );
+
+        handler.feedData([
+          MeshCoreConstants.respContactsStart,
+          0x01,
+          0x00,
+          0x00,
+          0x00,
+        ]);
+        handler.feedData(_contactFrame(publicKey, name: 'Relay One'));
+        handler.feedData([MeshCoreConstants.respEndOfContacts]);
+
+        await expectLater(future, completion(hasLength(1)));
+        expect(queue.pendingResponseCount, 0);
+      },
+    );
   });
 }
 
@@ -295,8 +392,41 @@ List<int> _fixedCString(String value, int size) {
   return bytes;
 }
 
+List<int> _contactFrame(
+  Uint8List publicKey, {
+  required String name,
+  int type = 2,
+  int flags = 0,
+  int outPathLen = 0xFF,
+  int lastAdvert = 0x01020304,
+  int advLat = 0,
+  int advLon = 0,
+  int lastMod = 0x05060708,
+}) {
+  final outPath = Uint8List(64);
+  final lastAdvertBytes = ByteData(4)..setUint32(0, lastAdvert, Endian.little);
+  final advLatBytes = ByteData(4)..setInt32(0, advLat, Endian.little);
+  final advLonBytes = ByteData(4)..setInt32(0, advLon, Endian.little);
+  final lastModBytes = ByteData(4)..setUint32(0, lastMod, Endian.little);
+
+  return [
+    MeshCoreConstants.respContact,
+    ...publicKey,
+    type,
+    flags,
+    outPathLen & 0xFF,
+    ...outPath,
+    ..._fixedCString(name, 32),
+    ...lastAdvertBytes.buffer.asUint8List(),
+    ...advLatBytes.buffer.asUint8List(),
+    ...advLonBytes.buffer.asUint8List(),
+    ...lastModBytes.buffer.asUint8List(),
+  ];
+}
+
 Uint8List _aes128EcbEncrypt(Uint8List secret16, Uint8List plain) {
-  final cipher = ECBBlockCipher(AESEngine())..init(true, KeyParameter(secret16));
+  final cipher = ECBBlockCipher(AESEngine())
+    ..init(true, KeyParameter(secret16));
   final out = Uint8List(plain.length);
   for (int i = 0; i < plain.length; i += 16) {
     cipher.processBlock(plain, i, out, i);

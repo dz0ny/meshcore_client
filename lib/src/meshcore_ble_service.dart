@@ -404,7 +404,10 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Get contacts from device
   Future<void> getContacts() async {
-    await _commandSender.writeData(FrameBuilder.buildGetContacts());
+    await _commandSender.writeDataAndWaitForResponse<List<Contact>>(
+      FrameBuilder.buildGetContacts(),
+      MeshCoreConstants.respEndOfContacts,
+    );
   }
 
   /// Get a single contact by public key from device
@@ -418,8 +421,17 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     debugPrint(
       '    Public key prefix: ${publicKey.sublist(0, 6).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':')}...',
     );
-    await _commandSender.writeData(
+    _responseHandler.setLastLookupContactPublicKey(publicKey);
+    await _commandSender.writeDataAndWaitForResponse<Contact>(
       FrameBuilder.buildGetContactByKey(publicKey),
+      MeshCoreConstants.respContact,
+    );
+  }
+
+  @override
+  Future<void> importContact(Uint8List contactAdvertFrame) async {
+    await _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildImportContact(contactAdvertFrame),
     );
   }
 

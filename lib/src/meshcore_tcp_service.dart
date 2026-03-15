@@ -371,15 +371,29 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
 
   @override
   Future<void> getContacts() =>
-      _commandSender.writeData(FrameBuilder.buildGetContacts());
+      _commandSender.writeDataAndWaitForResponse<List<Contact>>(
+        FrameBuilder.buildGetContacts(),
+        MeshCoreConstants.respEndOfContacts,
+      );
 
   @override
-  Future<void> getContactByKey(Uint8List publicKey) =>
-      _commandSender.writeData(FrameBuilder.buildGetContactByKey(publicKey));
+  Future<void> getContactByKey(Uint8List publicKey) {
+    _responseHandler.setLastLookupContactPublicKey(publicKey);
+    return _commandSender.writeDataAndWaitForResponse<Contact>(
+      FrameBuilder.buildGetContactByKey(publicKey),
+      MeshCoreConstants.respContact,
+    );
+  }
 
   @override
-  Future<void> addOrUpdateContact(Contact contact) =>
-      _commandSender.writeData(FrameBuilder.buildAddUpdateContact(contact));
+  Future<void> importContact(Uint8List contactAdvertFrame) =>
+      _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildImportContact(contactAdvertFrame),
+      );
+
+  @override
+  Future<void> addOrUpdateContact(Contact contact) => _commandSender
+      .writeDataAndWaitForAck(FrameBuilder.buildAddUpdateContact(contact));
 
   @override
   Future<void> removeContact(Uint8List contactPublicKey) => _commandSender
@@ -614,8 +628,8 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   );
 
   @override
-  Future<Map<String, dynamic>> getAutoaddConfig() => _commandSender
-      .writeDataAndWaitForResponse<Map<String, dynamic>>(
+  Future<Map<String, dynamic>> getAutoaddConfig() =>
+      _commandSender.writeDataAndWaitForResponse<Map<String, dynamic>>(
         FrameBuilder.buildGetAutoaddConfig(),
         MeshCoreConstants.respAutoaddConfig,
       );
