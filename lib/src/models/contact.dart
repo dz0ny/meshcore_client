@@ -11,6 +11,7 @@ enum ContactType {
   chat(1),
   repeater(2),
   room(3),
+  sensor(4),
   channel(99); // Virtual type for public channel (not from protocol)
 
   const ContactType(this.value);
@@ -31,6 +32,8 @@ enum ContactType {
         return 'Repeater';
       case ContactType.room:
         return 'Room';
+      case ContactType.sensor:
+        return 'Sensor';
       case ContactType.channel:
         return 'Channel';
       default:
@@ -131,6 +134,9 @@ class Contact {
 
   /// Check if contact is a room (persistent storage)
   bool get isRoom => type == ContactType.room;
+
+  /// Check if contact is a sensor node
+  bool get isSensor => type == ContactType.sensor;
 
   /// Check if contact is a channel (ephemeral broadcast)
   bool get isChannel => type == ContactType.channel;

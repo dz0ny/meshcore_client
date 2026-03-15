@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meshcore_client/src/buffer_reader.dart';
+import 'package:meshcore_client/src/models/contact.dart';
 import 'package:meshcore_client/src/models/message.dart';
 import 'package:meshcore_client/src/protocol/frame_parser.dart';
 
@@ -173,6 +174,40 @@ void main() {
       expect(contact.pathHashSize, 3);
       expect(contact.pathHopCount, 2);
       expect(contact.pathByteLength, 6);
+    });
+
+    test('parses sensor contact records as sensor type', () {
+      final payload = Uint8List.fromList([
+        ...List<int>.filled(32, 0x44),
+        0x04,
+        0x00,
+        0x00,
+        ...List<int>.filled(64, 0x00),
+        ...'WX Station'.codeUnits,
+        ...List<int>.filled(32 - 'WX Station'.length, 0x00),
+        0x78,
+        0x56,
+        0x34,
+        0x12,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0xEF,
+        0xCD,
+        0xAB,
+        0x90,
+      ]);
+
+      final contact = FrameParser.parseContact(BufferReader(payload));
+
+      expect(contact.type, ContactType.sensor);
+      expect(contact.isSensor, isTrue);
+      expect(contact.displayName, 'WX Station');
     });
   });
 }
