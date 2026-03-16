@@ -90,6 +90,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   static const Duration _keepaliveInterval = Duration(seconds: 20);
   bool _isSpectrumScanActive = false;
   bool _isSessionReady = false;
+  bool _isBurstSyncActive = false;
   Completer<Map<String, dynamic>>? _pendingDeviceInfoCompleter;
   Completer<Map<String, dynamic>>? _pendingSelfInfoCompleter;
 
@@ -409,14 +410,19 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   /// [onContactReceived]; the full list arrives via [onContactsComplete].
   @override
   Future<void> getContacts() async {
+    _isBurstSyncActive = true;
     final completer = Completer<void>();
     final prevCallback = _responseHandler.onContactsComplete;
 
-    _responseHandler.onContactsComplete = (contacts) {
-      // Restore the previous callback and forward
+    void finish() {
+      _isBurstSyncActive = false;
       _responseHandler.onContactsComplete = prevCallback;
-      prevCallback?.call(contacts);
       if (!completer.isCompleted) completer.complete();
+    }
+
+    _responseHandler.onContactsComplete = (contacts) {
+      finish();
+      prevCallback?.call(contacts);
     };
 
     await _commandSender.writeDataDirect(FrameBuilder.buildGetContacts());
@@ -425,7 +431,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     await completer.future.timeout(
       const Duration(seconds: 15),
       onTimeout: () {
-        _responseHandler.onContactsComplete = prevCallback;
+        finish();
         debugPrint('⚠️ [Service] getContacts timed out after 15s');
       },
     );
@@ -438,6 +444,10 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   ///
   /// The contact will be delivered via the onContactReceived callback.
   Future<void> getContactByKey(Uint8List publicKey) async {
+    // Wait for any burst sync to finish to avoid response misrouting
+    while (_isBurstSyncActive) {
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
     debugPrint('🔍 [BLE] Requesting single contact by key:');
     debugPrint(
       '    Public key prefix: ${publicKey.sublist(0, 6).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':')}...',
@@ -880,6 +890,10 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Get information for a specific channel
   Future<void> getChannel(int channelIdx) async {
+    // Wait for any burst sync to finish to avoid response misrouting
+    while (_isBurstSyncActive) {
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
     await _commandSender.writeDataAndWaitForResponse<Map<String, dynamic>>(
       FrameBuilder.buildGetChannel(channelIdx),
       MeshCoreConstants.respChannelInfo,
@@ -953,6 +967,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   @override
   Future<void> syncAllChannels({int maxChannels = 40}) async {
     debugPrint('📻 [Service] Syncing channels (1-${maxChannels - 1}) in burst...');
+    _isBurstSyncActive = true;
 
     final completer = Completer<void>();
     int received = 0;
@@ -961,6 +976,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     final prevErrorCallback = _responseHandler.onError;
 
     void finish() {
+      _isBurstSyncActive = false;
       _responseHandler.onChannelInfoReceived = prevChannelCallback;
       _responseHandler.onError = prevErrorCallback;
       if (!completer.isCompleted) completer.complete();
