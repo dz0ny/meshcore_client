@@ -370,11 +370,26 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   // ── Commands (delegate to BleCommandSender + FrameBuilder) ─────────────────
 
   @override
-  Future<void> getContacts() =>
-      _commandSender.writeDataAndWaitForResponse<List<Contact>>(
-        FrameBuilder.buildGetContacts(),
-        MeshCoreConstants.respEndOfContacts,
-      );
+  Future<void> getContacts() async {
+    final completer = Completer<void>();
+    final prevCallback = _responseHandler.onContactsComplete;
+
+    _responseHandler.onContactsComplete = (contacts) {
+      _responseHandler.onContactsComplete = prevCallback;
+      prevCallback?.call(contacts);
+      if (!completer.isCompleted) completer.complete();
+    };
+
+    await _commandSender.writeDataDirect(FrameBuilder.buildGetContacts());
+
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        _responseHandler.onContactsComplete = prevCallback;
+        debugPrint('⚠️ [TCP] getContacts timed out after 15s');
+      },
+    );
+  }
 
   @override
   Future<void> getContactByKey(Uint8List publicKey) {
@@ -389,6 +404,14 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   Future<void> importContact(Uint8List contactAdvertFrame) =>
       _commandSender.writeDataAndWaitForAck(
         FrameBuilder.buildImportContact(contactAdvertFrame),
+      );
+
+  @override
+  Future<void> importReceivedAdvert(Uint8List publicKey) =>
+      _commandSender.writeDataAndWaitForResponse<void>(
+        FrameBuilder.buildGetAdvertPath(publicKey),
+        MeshCoreConstants.respAdvertPath,
+        timeout: const Duration(seconds: 5),
       );
 
   @override
@@ -751,9 +774,62 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
 
   @override
   Future<void> syncAllChannels({int maxChannels = 40}) async {
-    for (int i = 1; i < maxChannels; i++) {
-      await getChannel(i);
+    debugPrint('📻 [TCP] Syncing channels (1-${maxChannels - 1}) in burst...');
+
+    final completer = Completer<void>();
+    int received = 0;
+    int sent = 0;
+    final prevChannelCallback = _responseHandler.onChannelInfoReceived;
+    final prevErrorCallback = _responseHandler.onError;
+
+    void finish() {
+      _responseHandler.onChannelInfoReceived = prevChannelCallback;
+      _responseHandler.onError = prevErrorCallback;
+      if (!completer.isCompleted) completer.complete();
     }
+
+    _responseHandler.onChannelInfoReceived =
+        (int channelIdx, String channelName, Uint8List secret, int? flags) {
+      received++;
+      prevChannelCallback?.call(channelIdx, channelName, secret, flags);
+      if (received >= sent && !completer.isCompleted) {
+        finish();
+      }
+    };
+
+    _responseHandler.onError = (String error, {int? errorCode}) {
+      prevErrorCallback?.call(error, errorCode: errorCode);
+      if (errorCode == 2) {
+        finish();
+      }
+    };
+
+    for (int i = 1; i < maxChannels; i++) {
+      try {
+        await _commandSender.writeDataDirect(FrameBuilder.buildGetChannel(i));
+        sent++;
+      } catch (e) {
+        debugPrint('⚠️ [TCP] Channel sync write failed at slot $i: $e');
+        break;
+      }
+    }
+
+    if (sent == 0) {
+      finish();
+      return;
+    }
+
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        debugPrint(
+          '⚠️ [TCP] Channel sync timed out after 15s (received $received/$sent)',
+        );
+        finish();
+      },
+    );
+
+    debugPrint('✅ [TCP] Channel sync complete ($received channels received)');
   }
 
   @override

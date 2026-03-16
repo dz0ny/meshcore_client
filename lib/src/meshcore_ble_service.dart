@@ -402,11 +402,32 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     await _initializeSession();
   }
 
-  /// Get contacts from device
+  /// Get contacts from device.
+  ///
+  /// Bypasses the command queue so the device can burst-stream all contacts
+  /// without queue serialization overhead.  Individual contacts arrive via
+  /// [onContactReceived]; the full list arrives via [onContactsComplete].
+  @override
   Future<void> getContacts() async {
-    await _commandSender.writeDataAndWaitForResponse<List<Contact>>(
-      FrameBuilder.buildGetContacts(),
-      MeshCoreConstants.respEndOfContacts,
+    final completer = Completer<void>();
+    final prevCallback = _responseHandler.onContactsComplete;
+
+    _responseHandler.onContactsComplete = (contacts) {
+      // Restore the previous callback and forward
+      _responseHandler.onContactsComplete = prevCallback;
+      prevCallback?.call(contacts);
+      if (!completer.isCompleted) completer.complete();
+    };
+
+    await _commandSender.writeDataDirect(FrameBuilder.buildGetContacts());
+
+    // Wait for endOfContacts, with a generous timeout
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        _responseHandler.onContactsComplete = prevCallback;
+        debugPrint('⚠️ [Service] getContacts timed out after 15s');
+      },
     );
   }
 
@@ -425,6 +446,15 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     await _commandSender.writeDataAndWaitForResponse<Contact>(
       FrameBuilder.buildGetContactByKey(publicKey),
       MeshCoreConstants.respContact,
+    );
+  }
+
+  @override
+  Future<void> importReceivedAdvert(Uint8List publicKey) async {
+    await _commandSender.writeDataAndWaitForResponse<void>(
+      FrameBuilder.buildGetAdvertPath(publicKey),
+      MeshCoreConstants.respAdvertPath,
+      timeout: const Duration(seconds: 5),
     );
   }
 
@@ -914,18 +944,76 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     debugPrint('✅ [BLE] Channel $channelIdx deleted');
   }
 
-  /// Sync all channels from the device (channels 1-39)
-  /// Skips channel 0 (public channel) which is implicit and not stored on device
+  /// Sync all channels from the device (channels 1-39).
+  ///
+  /// Fires all getChannel requests in rapid succession (bypassing queue
+  /// serialization) and collects responses via the channelInfo callback.
+  /// Stops on first error response (= no more channel slots), matching the
+  /// official MeshCore app behaviour.
+  @override
   Future<void> syncAllChannels({int maxChannels = 40}) async {
-    debugPrint('📻 [Service] Syncing channels (1-${maxChannels - 1})...');
+    debugPrint('📻 [Service] Syncing channels (1-${maxChannels - 1}) in burst...');
 
-    // Start from 1 to skip channel 0 (public channel)
-    // Channel 0 is implicit and handled separately via configurePublicChannel()
-    for (int i = 1; i < maxChannels; i++) {
-      await getChannel(i);
+    final completer = Completer<void>();
+    int received = 0;
+    int sent = 0;
+    final prevChannelCallback = _responseHandler.onChannelInfoReceived;
+    final prevErrorCallback = _responseHandler.onError;
+
+    void finish() {
+      _responseHandler.onChannelInfoReceived = prevChannelCallback;
+      _responseHandler.onError = prevErrorCallback;
+      if (!completer.isCompleted) completer.complete();
     }
 
-    debugPrint('✅ [Service] Channel sync complete');
+    _responseHandler.onChannelInfoReceived =
+        (int channelIdx, String channelName, Uint8List secret, int? flags) {
+      received++;
+      // Forward to the original callback
+      prevChannelCallback?.call(channelIdx, channelName, secret, flags);
+      if (received >= sent && !completer.isCompleted) {
+        finish();
+      }
+    };
+
+    _responseHandler.onError = (String error, {int? errorCode}) {
+      // Forward the error
+      prevErrorCallback?.call(error, errorCode: errorCode);
+      // ERR_CODE_NOT_FOUND (2) means we hit the end of valid channel slots.
+      // Other errors are forwarded but don't abort the sync.
+      if (errorCode == 2) {
+        finish();
+      }
+    };
+
+    // Fire all requests without waiting for individual responses
+    for (int i = 1; i < maxChannels; i++) {
+      try {
+        await _commandSender.writeDataDirect(FrameBuilder.buildGetChannel(i));
+        sent++;
+      } catch (e) {
+        debugPrint('⚠️ [Service] Channel sync write failed at slot $i: $e');
+        break;
+      }
+    }
+
+    if (sent == 0) {
+      finish();
+      return;
+    }
+
+    // Wait for all responses (or error/timeout)
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        debugPrint(
+          '⚠️ [Service] Channel sync timed out after 15s (received $received/$sent)',
+        );
+        finish();
+      },
+    );
+
+    debugPrint('✅ [Service] Channel sync complete ($received channels received)');
   }
 
   /// Clear packet logs

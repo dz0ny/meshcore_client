@@ -97,6 +97,8 @@ class Message {
   // SAR marker data (if this is a SAR message)
   final bool isSarMarker;
   final LatLng? sarGpsCoordinates;
+  final LatLng? sarCustomMapPoint;
+  final String? sarCustomMapId;
   final String? sarNotes; // Optional message/notes for SAR marker
   final String? sarCustomEmoji; // Custom emoji for unknown SAR marker types
   final int? sarColorIndex; // Color index (0-7) from standard palette
@@ -155,6 +157,8 @@ class Message {
     required this.text,
     this.isSarMarker = false,
     this.sarGpsCoordinates,
+    this.sarCustomMapPoint,
+    this.sarCustomMapId,
     this.sarNotes,
     this.sarCustomEmoji,
     this.sarColorIndex,
@@ -326,7 +330,9 @@ class Message {
   /// Get drawing metadata from message text (returns null if not a drawing)
   /// Extracts basic info for display in message bubbles
   Map<String, dynamic>? get drawingMetadata {
-    if (!isDrawing || !text.startsWith('D:')) return null;
+    if (!isDrawing || (!text.startsWith('D:') && !text.startsWith('D2:'))) {
+      return null;
+    }
 
     try {
       // Return basic metadata (actual parsing happens in DrawingMessageParser)
@@ -348,6 +354,8 @@ class Message {
     String? text,
     bool? isSarMarker,
     LatLng? sarGpsCoordinates,
+    LatLng? sarCustomMapPoint,
+    String? sarCustomMapId,
     String? sarNotes,
     String? sarCustomEmoji,
     int? sarColorIndex,
@@ -388,6 +396,8 @@ class Message {
       text: text ?? this.text,
       isSarMarker: isSarMarker ?? this.isSarMarker,
       sarGpsCoordinates: sarGpsCoordinates ?? this.sarGpsCoordinates,
+      sarCustomMapPoint: sarCustomMapPoint ?? this.sarCustomMapPoint,
+      sarCustomMapId: sarCustomMapId ?? this.sarCustomMapId,
       sarNotes: sarNotes ?? this.sarNotes,
       sarCustomEmoji: sarCustomEmoji ?? this.sarCustomEmoji,
       sarColorIndex: sarColorIndex ?? this.sarColorIndex,

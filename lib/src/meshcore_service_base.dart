@@ -66,6 +66,13 @@ abstract class MeshCoreServiceBase {
   Future<void> getContacts();
   Future<void> getContactByKey(Uint8List publicKey);
   Future<void> importContact(Uint8List contactAdvertFrame);
+
+  /// Import a recently received advert by public key.
+  ///
+  /// Tells the firmware to look up the advert in its received-advert buffer,
+  /// store the contact, and return the routing path.  After this call,
+  /// [getContactByKey] will return the full contact with name, type, etc.
+  Future<void> importReceivedAdvert(Uint8List publicKey);
   Future<void> addOrUpdateContact(Contact contact);
   Future<void> removeContact(Uint8List contactPublicKey);
   Future<void> resetPath(Uint8List contactPublicKey);

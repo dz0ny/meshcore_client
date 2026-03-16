@@ -233,6 +233,21 @@ class BleCommandSender {
     _packetLogs.clear();
   }
 
+  /// Send data directly to the device, bypassing the command queue.
+  ///
+  /// Use this for bulk/streaming operations (e.g. getContacts, syncAllChannels)
+  /// where the caller manages response coordination via callbacks rather than
+  /// the queue's request→response pattern.
+  ///
+  /// The caller is responsible for waiting for responses via the appropriate
+  /// callbacks on BleResponseHandler.
+  Future<void> writeDataDirect(Uint8List data) async {
+    if (!_isReady) {
+      throw Exception('Not connected');
+    }
+    await _sendToDevice(data);
+  }
+
   /// Dispose resources
   void dispose() {
     _commandQueue.dispose();

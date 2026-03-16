@@ -288,6 +288,10 @@ class BleResponseHandler {
           debugPrint('  → Handling ChannelInfo');
           _handleChannelInfo(reader);
           break;
+        case MeshCoreConstants.respAdvertPath:
+          debugPrint('  → Handling AdvertPath');
+          _handleAdvertPath(reader);
+          break;
         case MeshCoreConstants.respAllowedRepeatFreq:
           debugPrint('  → Handling AllowedRepeatFreq');
           _handleAllowedRepeatFreq(reader);
@@ -567,6 +571,33 @@ class BleResponseHandler {
       debugPrint('  ✅ [SelfInfo] Parsed successfully');
     } catch (e) {
       debugPrint('  ❌ [SelfInfo] Parsing error: $e');
+    }
+  }
+
+  /// Handle AdvertPath response (respAdvertPath = 22)
+  ///
+  /// Returned by cmdGetAdvertPath (42) after importing a received advert.
+  /// Format: [pathLenEncoded:uint8][pathBytes...]
+  void _handleAdvertPath(BufferReader reader) {
+    try {
+      if (reader.remainingBytesCount < 1) return;
+      final pathLenEncoded = reader.readByte();
+      final hashSize = ((pathLenEncoded >> 6) & 3) + 1;
+      final hopCount = pathLenEncoded & 63;
+      final pathByteCount = hashSize * hopCount;
+      Uint8List? pathBytes;
+      if (pathByteCount > 0 && reader.remainingBytesCount >= pathByteCount) {
+        pathBytes = Uint8List.fromList(reader.readBytes(pathByteCount));
+      }
+      debugPrint(
+        '  ✅ [AdvertPath] hashSize=$hashSize hops=$hopCount pathBytes=${pathBytes?.length ?? 0}',
+      );
+      _commandQueue?.completeCommand<void>(
+        MeshCoreConstants.respAdvertPath,
+        null,
+      );
+    } catch (e) {
+      debugPrint('  ❌ [AdvertPath] Parsing error: $e');
     }
   }
 

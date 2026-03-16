@@ -368,6 +368,21 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build GetAdvertPath command - imports a received advert by public key
+  /// and returns the advert's routing path.
+  ///
+  /// This tells the firmware to look up a recently received advert in its
+  /// internal buffer, store the contact, and return the routing path.
+  /// After this call, [buildGetContactByKey] will return the full contact
+  /// including name, type, location, etc.
+  static Uint8List buildGetAdvertPath(Uint8List publicKey) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdGetAdvertPath); // 0x2A (42)
+    writer.writeByte(0); // sub-command: import from received advert buffer
+    writer.writeBytes(publicKey); // 32 bytes
+    return writer.toBytes();
+  }
+
   /// Build FactoryReset command - erases device data and restores defaults
   static Uint8List buildFactoryReset() {
     final writer = BufferWriter();
