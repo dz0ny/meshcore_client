@@ -231,6 +231,15 @@ class Contact {
     return advName.substring(emoji.length).trim();
   }
 
+  /// Whether this contact is marked as a favourite on the device.
+  /// Firmware stores the favourite flag in bit 0 of the `flags` field.
+  bool get isFavourite => (flags & 0x01) != 0;
+
+  /// Return a copy with the favourite bit toggled.
+  Contact toggleFavourite() => copyWith(
+    flags: isFavourite ? (flags & ~0x01) : (flags | 0x01),
+  );
+
   /// Check if this contact is the Public Channel (all-zeros public key)
   bool get isPublicChannel =>
       publicKeyHex ==
