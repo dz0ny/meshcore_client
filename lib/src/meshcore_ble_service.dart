@@ -636,6 +636,21 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     await _commandSender.writeData(FrameBuilder.buildSyncNextMessage());
   }
 
+  /// Read custom variables from device (GPS mode, sensor settings, etc.)
+  Future<Map<String, String>> getCustomVars() async {
+    return _commandSender.writeDataAndWaitForResponse<Map<String, String>>(
+      FrameBuilder.buildGetCustomVars(),
+      MeshCoreConstants.respCustomVars,
+    );
+  }
+
+  /// Set a custom variable on the device
+  Future<void> setCustomVar(String key, String value) async {
+    await _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildSetCustomVar(key, value),
+    );
+  }
+
   /// Get device time from companion radio
   Future<void> getDeviceTime() async {
     await _commandSender.writeData(FrameBuilder.buildGetDeviceTime());

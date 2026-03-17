@@ -241,6 +241,10 @@ class BleResponseHandler {
           debugPrint('  → Handling SelfInfo');
           _handleSelfInfo(reader);
           break;
+        case MeshCoreConstants.respCustomVars:
+          debugPrint('  → Handling CustomVars');
+          _handleCustomVars(reader);
+          break;
         case MeshCoreConstants.pushAdvert:
           debugPrint('  → Handling Advert push');
           _handleAdvert(reader);
@@ -571,6 +575,29 @@ class BleResponseHandler {
       debugPrint('  ✅ [SelfInfo] Parsed successfully');
     } catch (e) {
       debugPrint('  ❌ [SelfInfo] Parsing error: $e');
+    }
+  }
+
+  /// Handle CustomVars response (respCustomVars = 21)
+  ///
+  /// Format: "key1:val1,key2:val2,..." as UTF-8 string
+  void _handleCustomVars(BufferReader reader) {
+    try {
+      final raw = String.fromCharCodes(reader.readRemainingBytes());
+      final vars = <String, String>{};
+      for (final pair in raw.split(',')) {
+        final idx = pair.indexOf(':');
+        if (idx > 0) {
+          vars[pair.substring(0, idx)] = pair.substring(idx + 1);
+        }
+      }
+      debugPrint('  ✅ [CustomVars] ${vars.length} vars: $vars');
+      _commandQueue?.completeCommand<Map<String, String>>(
+        MeshCoreConstants.respCustomVars,
+        vars,
+      );
+    } catch (e) {
+      debugPrint('  ❌ [CustomVars] Parsing error: $e');
     }
   }
 

@@ -158,6 +158,8 @@ abstract class MeshCoreServiceBase {
     required bool overwriteOldest,
   });
 
+  Future<Map<String, String>> getCustomVars();
+  Future<void> setCustomVar(String key, String value);
   Future<void> refreshDeviceInfo();
   Future<void> getBatteryAndStorage();
   Future<void> loginToRoom({

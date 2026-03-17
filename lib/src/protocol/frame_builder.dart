@@ -383,6 +383,24 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build GetCustomVars command — reads device custom variables (e.g. GPS mode)
+  static Uint8List buildGetCustomVars() {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdGetCustomVars); // 0x28 (40)
+    return writer.toBytes();
+  }
+
+  /// Build SetCustomVar command — sets a single custom variable
+  ///
+  /// Format: [cmd(1)]["key:value" as UTF-8 string]
+  /// Example: key="gps", value="1" → sends [0x29][gps:1]
+  static Uint8List buildSetCustomVar(String key, String value) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSetCustomVar); // 0x29 (41)
+    writer.writeString('$key:$value');
+    return writer.toBytes();
+  }
+
   /// Build FactoryReset command - erases device data and restores defaults
   static Uint8List buildFactoryReset() {
     final writer = BufferWriter();

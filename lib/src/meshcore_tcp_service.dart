@@ -675,6 +675,19 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   );
 
   @override
+  @override
+  Future<Map<String, String>> getCustomVars() =>
+      _commandSender.writeDataAndWaitForResponse<Map<String, String>>(
+        FrameBuilder.buildGetCustomVars(),
+        MeshCoreConstants.respCustomVars,
+      );
+
+  @override
+  Future<void> setCustomVar(String key, String value) =>
+      _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildSetCustomVar(key, value),
+      );
+
   Future<void> refreshDeviceInfo() => _sendDeviceQuery();
 
   @override
