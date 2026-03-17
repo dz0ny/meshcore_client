@@ -245,6 +245,10 @@ class BleResponseHandler {
           debugPrint('  → Handling CustomVars');
           _handleCustomVars(reader);
           break;
+        case MeshCoreConstants.respExportContact:
+          debugPrint('  → Handling ExportContact');
+          _handleExportContact(reader);
+          break;
         case MeshCoreConstants.pushAdvert:
           debugPrint('  → Handling Advert push');
           _handleAdvert(reader);
@@ -575,6 +579,21 @@ class BleResponseHandler {
       debugPrint('  ✅ [SelfInfo] Parsed successfully');
     } catch (e) {
       debugPrint('  ❌ [SelfInfo] Parsing error: $e');
+    }
+  }
+
+  /// Handle ExportContact response (respExportContact = 11)
+  /// Returns the raw 64-byte advert frame.
+  void _handleExportContact(BufferReader reader) {
+    try {
+      final frame = Uint8List.fromList(reader.readRemainingBytes());
+      debugPrint('  ✅ [ExportContact] ${frame.length} bytes');
+      _commandQueue?.completeCommand<Uint8List>(
+        MeshCoreConstants.respExportContact,
+        frame,
+      );
+    } catch (e) {
+      debugPrint('  ❌ [ExportContact] Parsing error: $e');
     }
   }
 

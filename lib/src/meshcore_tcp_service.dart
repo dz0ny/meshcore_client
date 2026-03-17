@@ -675,6 +675,12 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   );
 
   @override
+  Future<Uint8List> exportContact(Uint8List? publicKey) =>
+      _commandSender.writeDataAndWaitForResponse<Uint8List>(
+        FrameBuilder.buildExportContact(publicKey),
+        MeshCoreConstants.respExportContact,
+      );
+
   @override
   Future<Map<String, String>> getCustomVars() =>
       _commandSender.writeDataAndWaitForResponse<Map<String, String>>(

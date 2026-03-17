@@ -383,6 +383,17 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build ExportContact command — exports a contact as a 64-byte advert frame
+  static Uint8List buildExportContact(Uint8List? publicKey) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdExportContact); // 0x11 (17)
+    if (publicKey != null) {
+      writer.writeBytes(publicKey); // 32 bytes — export specific contact
+    }
+    // Without publicKey: exports self
+    return writer.toBytes();
+  }
+
   /// Build GetCustomVars command — reads device custom variables (e.g. GPS mode)
   static Uint8List buildGetCustomVars() {
     final writer = BufferWriter();

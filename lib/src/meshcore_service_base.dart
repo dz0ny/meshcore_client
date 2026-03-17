@@ -158,6 +158,7 @@ abstract class MeshCoreServiceBase {
     required bool overwriteOldest,
   });
 
+  Future<Uint8List> exportContact(Uint8List? publicKey);
   Future<Map<String, String>> getCustomVars();
   Future<void> setCustomVar(String key, String value);
   Future<void> refreshDeviceInfo();

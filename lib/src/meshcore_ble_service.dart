@@ -636,6 +636,15 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     await _commandSender.writeData(FrameBuilder.buildSyncNextMessage());
   }
 
+  /// Export a contact as a raw advert frame (for sharing as meshcore:// URL).
+  /// Pass null to export self.
+  Future<Uint8List> exportContact(Uint8List? publicKey) async {
+    return _commandSender.writeDataAndWaitForResponse<Uint8List>(
+      FrameBuilder.buildExportContact(publicKey),
+      MeshCoreConstants.respExportContact,
+    );
+  }
+
   /// Read custom variables from device (GPS mode, sensor settings, etc.)
   Future<Map<String, String>> getCustomVars() async {
     return _commandSender.writeDataAndWaitForResponse<Map<String, String>>(
