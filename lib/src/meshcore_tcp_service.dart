@@ -22,8 +22,8 @@ import 'meshcore_service_base.dart';
 /// so [ConnectionProvider] can swap between them transparently.
 class MeshCoreTcpService extends MeshCoreServiceBase {
   // Keep limits aligned with companion frame/payload constraints.
-  static const int _maxContactMessageBytes = 156;
-  static const int _maxChannelMessageBytes = 127;
+  static const int _maxContactMessageBytes = 150;
+  static const int _maxChannelMessageBytes = 160;
   static const Duration _scanTimeoutPadding = Duration(seconds: 8);
   static const int _scanSettleMs = 12;
 

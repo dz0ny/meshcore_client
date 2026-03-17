@@ -32,6 +32,7 @@ export 'src/protocol/frame_builder.dart';
 export 'src/meshcore_service_base.dart';
 export 'src/meshcore_ble_service.dart';
 export 'src/meshcore_tcp_service.dart';
+export 'src/meshcore_serial_service.dart';
 
 // BLE layer callback types (needed for onRawDataReceived wiring)
 export 'src/ble/ble_response_handler.dart' show OnRawDataReceivedCallback;
