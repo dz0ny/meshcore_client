@@ -29,6 +29,29 @@ void main() {
       expect(message.textType, MessageTextType.signedPlain);
       expect(message.text, 'signed hello');
       expect(message.senderTimestamp, 0x12345678);
+      expect(message.roomPostAuthorPrefix, isNotNull);
+      expect(
+        message.roomPostAuthorKeyShort,
+        '11223344',
+      );
+      expect(message.isRoomPost, isTrue);
+    });
+
+    test('room post author is null for non-signed messages', () {
+      final payload = Uint8List.fromList([
+        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,
+        0x00, // no path
+        MessageTextType.plain.value,
+        0x78, 0x56, 0x34, 0x12,
+        ...'hello from DM'.codeUnits,
+      ]);
+
+      final message = FrameParser.parseContactMessage(BufferReader(payload));
+
+      expect(message.roomPostAuthorPrefix, isNull);
+      expect(message.roomPostAuthorKeyShort, isNull);
+      expect(message.isRoomPost, isFalse);
+      expect(message.text, 'hello from DM');
     });
 
     test('parses contact message descriptor into hop count', () {

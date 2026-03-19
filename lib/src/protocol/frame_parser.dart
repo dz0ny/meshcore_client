@@ -122,10 +122,13 @@ class FrameParser {
     final senderTimestamp = reader.readUInt32LE();
 
     String text;
+    Uint8List? roomPostAuthorPrefix;
     if (txtType == MessageTextType.signedPlain) {
-      // Signed message format: [4-byte sender prefix][UTF-8 text]
+      // Signed message format: [4-byte room post author prefix][UTF-8 text]
+      // The author prefix identifies who originally posted in a room.
       if (reader.remainingBytesCount >= 4) {
-        reader.readBytes(4); // Skip extra sender prefix
+        roomPostAuthorPrefix =
+            Uint8List.fromList(reader.readBytes(4));
         text = reader.hasRemaining ? reader.readString() : '';
       } else {
         text = reader.readString();
@@ -142,6 +145,7 @@ class FrameParser {
       id: '${DateTime.now().millisecondsSinceEpoch}_${pubKeyPrefix.map((b) => b.toRadixString(16)).join()}',
       messageType: MessageType.contact,
       senderPublicKeyPrefix: pubKeyPrefix,
+      roomPostAuthorPrefix: roomPostAuthorPrefix,
       pathLen: _pathHopCount(pathDescriptor),
       textType: txtType,
       senderTimestamp: senderTimestamp,

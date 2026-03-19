@@ -87,6 +87,7 @@ class Message {
   final String id;
   final MessageType messageType;
   final Uint8List? senderPublicKeyPrefix; // 6 bytes for contact messages
+  final Uint8List? roomPostAuthorPrefix; // 4 bytes for room server forwarded messages
   final int? channelIdx; // For channel messages
   final int pathLen;
   final Uint8List? pathBytes; // Preserved hop path bytes when available
@@ -149,6 +150,7 @@ class Message {
     required this.id,
     required this.messageType,
     this.senderPublicKeyPrefix,
+    this.roomPostAuthorPrefix,
     this.channelIdx,
     required this.pathLen,
     this.pathBytes,
@@ -194,6 +196,19 @@ class Message {
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join('');
   }
+
+  /// Get room post author prefix as hex string (4 bytes → 8 hex chars).
+  /// Non-null only for messages forwarded by a room server.
+  String? get roomPostAuthorKeyShort {
+    if (roomPostAuthorPrefix == null) return null;
+    return roomPostAuthorPrefix!
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join('');
+  }
+
+  /// Whether this message was forwarded by a room server
+  /// (has a different original author than the sender).
+  bool get isRoomPost => roomPostAuthorPrefix != null;
 
   /// Get sender timestamp as DateTime
   DateTime get sentAt {
@@ -346,6 +361,7 @@ class Message {
     String? id,
     MessageType? messageType,
     Uint8List? senderPublicKeyPrefix,
+    Uint8List? roomPostAuthorPrefix,
     int? channelIdx,
     int? pathLen,
     Uint8List? pathBytes,
@@ -388,6 +404,8 @@ class Message {
       messageType: messageType ?? this.messageType,
       senderPublicKeyPrefix:
           senderPublicKeyPrefix ?? this.senderPublicKeyPrefix,
+      roomPostAuthorPrefix:
+          roomPostAuthorPrefix ?? this.roomPostAuthorPrefix,
       channelIdx: channelIdx ?? this.channelIdx,
       pathLen: pathLen ?? this.pathLen,
       pathBytes: pathBytes ?? this.pathBytes,
