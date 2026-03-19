@@ -115,6 +115,18 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build self telemetry request — asks the companion device for its own
+  /// sensor data (GPS, temperature, battery, etc.)
+  static Uint8List buildSelfTelemetryReq() {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSendTelemetryReq);
+    writer.writeByte(0); // zero-hop (self)
+    writer.writeByte(0); // reserved
+    writer.writeByte(0); // reserved
+    // No public key = request own telemetry
+    return writer.toBytes();
+  }
+
   /// Build SendRawData command — direct-route binary payload (no base64, no text encoding).
   ///
   /// [path] is the contact's [outPath], [pathLen] is [outPathLen].
