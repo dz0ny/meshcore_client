@@ -255,22 +255,16 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
-  static Uint8List buildScanSpectrum({
-    required int startFrequencyKhz,
-    required int stopFrequencyKhz,
-    required int bandwidthKhz,
-    required int stepKhz,
-    required int dwellMs,
-    required int thresholdDb,
+  static Uint8List buildSendChannelData({
+    required int channelIdx,
+    required int dataType,
+    required Uint8List payload,
   }) {
     final writer = BufferWriter();
-    writer.writeByte(MeshCoreConstants.cmdScanSpectrum);
-    writer.writeUInt32LE(startFrequencyKhz);
-    writer.writeUInt32LE(stopFrequencyKhz);
-    writer.writeUInt32LE(bandwidthKhz);
-    writer.writeUInt32LE(stepKhz);
-    writer.writeUInt16LE(dwellMs);
-    writer.writeByte(thresholdDb);
+    writer.writeByte(MeshCoreConstants.cmdSendChannelData);
+    writer.writeUInt16LE(dataType);
+    writer.writeByte(channelIdx);
+    writer.writeBytes(payload);
     return writer.toBytes();
   }
 

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meshcore_client/src/meshcore_constants.dart';
 import 'package:meshcore_client/src/protocol/frame_builder.dart';
 
 void main() {
@@ -36,6 +37,27 @@ void main() {
       );
 
       expect(frame.last, 0);
+    });
+
+    test('builds channel datagram frames with type and channel metadata', () {
+      final frame = FrameBuilder.buildSendChannelData(
+        channelIdx: 3,
+        dataType: MeshCoreConstants.dataTypeDev,
+        payload: Uint8List.fromList([0x47, 0x01, 0x02]),
+      );
+
+      expect(
+        frame,
+        orderedEquals([
+          MeshCoreConstants.cmdSendChannelData,
+          0xFF,
+          0xFF,
+          0x03,
+          0x47,
+          0x01,
+          0x02,
+        ]),
+      );
     });
   });
 }

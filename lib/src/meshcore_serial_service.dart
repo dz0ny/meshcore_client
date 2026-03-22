@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'models/contact.dart';
 import 'models/ble_packet_log.dart';
-import 'models/spectrum_scan.dart';
 import 'ble/ble_command_sender.dart';
 import 'ble/ble_response_handler.dart';
 import 'protocol/frame_builder.dart';
@@ -88,6 +87,16 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
         onAutoaddConfigReceived?.call(c);
     _responseHandler.onRawDataReceived = (p, s, r) =>
         onRawDataReceived?.call(p, s, r);
+    _responseHandler.onChannelDataReceived =
+        (channelIdx, pathLen, dataType, payload, snrRaw, rssiDbm) =>
+            onChannelDataReceived?.call(
+              channelIdx,
+              pathLen,
+              dataType,
+              payload,
+              snrRaw,
+              rssiDbm,
+            );
     _responseHandler.onRxActivity = () => onRxActivity?.call();
   }
 
@@ -192,13 +201,8 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
   @override
   int get txPacketCount => _commandSender.txPacketCount;
   @override
-  bool get isSpectrumScanActive => false;
-  @override
   List<BlePacketLog> get packetLogs {
-    final all = [
-      ..._commandSender.packetLogs,
-      ..._responseHandler.packetLogs,
-    ];
+    final all = [..._commandSender.packetLogs, ..._responseHandler.packetLogs];
     all.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return all;
   }
@@ -233,10 +237,8 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
       );
 
   @override
-  Future<void> addOrUpdateContact(Contact contact) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildAddUpdateContact(contact),
-      );
+  Future<void> addOrUpdateContact(Contact contact) => _commandSender
+      .writeDataAndWaitForAck(FrameBuilder.buildAddUpdateContact(contact));
 
   @override
   Future<void> sendTextMessage({
@@ -271,48 +273,44 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     required int channelIdx,
     required String text,
     int textType = 0,
-  }) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSendChannelTxtMsg(
-          channelIdx: channelIdx,
-          text: text,
-          textType: textType,
-        ),
-      );
+  }) => _commandSender.writeDataAndWaitForAck(
+    FrameBuilder.buildSendChannelTxtMsg(
+      channelIdx: channelIdx,
+      text: text,
+      textType: textType,
+    ),
+  );
 
   @override
   void trackSentChannelMessage(
     String messageId, {
     int? channelIdx,
     String? plainText,
-  }) =>
-      _responseHandler.trackSentMessage(
-        messageId,
-        null,
-        channelIdx: channelIdx,
-        plainText: plainText,
-      );
+  }) => _responseHandler.trackSentMessage(
+    messageId,
+    null,
+    channelIdx: channelIdx,
+    plainText: plainText,
+  );
 
   @override
   Future<void> requestTelemetry(
     Uint8List contactPublicKey, {
     bool zeroHop = false,
-  }) =>
-      _commandSender.writeData(
-        FrameBuilder.buildSendTelemetryReq(contactPublicKey, zeroHop: zeroHop),
-      );
+  }) => _commandSender.writeData(
+    FrameBuilder.buildSendTelemetryReq(contactPublicKey, zeroHop: zeroHop),
+  );
 
   @override
   Future<void> sendBinaryRequest({
     required Uint8List contactPublicKey,
     required Uint8List requestData,
-  }) =>
-      _commandSender.writeData(
-        FrameBuilder.buildSendBinaryReq(
-          contactPublicKey: contactPublicKey,
-          requestData: requestData,
-        ),
-      );
+  }) => _commandSender.writeData(
+    FrameBuilder.buildSendBinaryReq(
+      contactPublicKey: contactPublicKey,
+      requestData: requestData,
+    ),
+  );
 
   @override
   Future<void> sendControlData(Uint8List payload) =>
@@ -323,14 +321,36 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     required int contactPathLen,
     required Uint8List contactPath,
     required Uint8List payload,
-  }) =>
-      _commandSender.writeData(
-        FrameBuilder.buildSendRawData(
-          pathLen: contactPathLen,
-          path: contactPath,
-          payload: payload,
-        ),
+  }) => _commandSender.writeData(
+    FrameBuilder.buildSendRawData(
+      pathLen: contactPathLen,
+      path: contactPath,
+      payload: payload,
+    ),
+  );
+
+  @override
+  Future<void> sendChannelData({
+    required int channelIdx,
+    required int dataType,
+    required Uint8List payload,
+  }) {
+    if (dataType == 0) {
+      throw ArgumentError.value(dataType, 'dataType', 'must be non-zero');
+    }
+    if (payload.length > MeshCoreConstants.maxChannelDataLength) {
+      throw ArgumentError(
+        'Channel datagram exceeds ${MeshCoreConstants.maxChannelDataLength} bytes',
       );
+    }
+    return _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildSendChannelData(
+        channelIdx: channelIdx,
+        dataType: dataType,
+        payload: payload,
+      ),
+    );
+  }
 
   @override
   Future<void> syncNextMessage() =>
@@ -345,28 +365,20 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
       _commandSender.writeData(FrameBuilder.buildSetDeviceTime());
 
   @override
-  Future<void> sendSelfAdvert({bool floodMode = true}) =>
-      _commandSender.writeData(
-        FrameBuilder.buildSendSelfAdvert(floodMode: floodMode),
-      );
+  Future<void> sendSelfAdvert({bool floodMode = true}) => _commandSender
+      .writeData(FrameBuilder.buildSendSelfAdvert(floodMode: floodMode));
 
   @override
-  Future<void> setAdvertName(String name) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetAdvertName(name),
-      );
+  Future<void> setAdvertName(String name) => _commandSender
+      .writeDataAndWaitForAck(FrameBuilder.buildSetAdvertName(name));
 
   @override
   Future<void> setAdvertLatLon({
     required double latitude,
     required double longitude,
-  }) =>
-      _commandSender.writeData(
-        FrameBuilder.buildSetAdvertLatLon(
-          latitude: latitude,
-          longitude: longitude,
-        ),
-      );
+  }) => _commandSender.writeData(
+    FrameBuilder.buildSetAdvertLatLon(latitude: latitude, longitude: longitude),
+  );
 
   @override
   Future<void> setRadioParams({
@@ -375,37 +387,22 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     required int spreadingFactor,
     required int codingRate,
     bool? repeat,
-  }) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetRadioParams(
-          frequency: frequency,
-          bandwidth: bandwidth,
-          spreadingFactor: spreadingFactor,
-          codingRate: codingRate,
-          repeat: repeat == null ? null : (repeat ? 1 : 0),
-        ),
-      );
+  }) => _commandSender.writeDataAndWaitForAck(
+    FrameBuilder.buildSetRadioParams(
+      frequency: frequency,
+      bandwidth: bandwidth,
+      spreadingFactor: spreadingFactor,
+      codingRate: codingRate,
+      repeat: repeat == null ? null : (repeat ? 1 : 0),
+    ),
+  );
 
   @override
   Future<void> getAllowedRepeatFreq() =>
       _commandSender.writeData(FrameBuilder.buildGetAllowedRepeatFreq());
 
-  @override
-  Future<SpectrumScanResult> scanSpectrum({
-    required int startFrequencyKhz,
-    required int stopFrequencyKhz,
-    required int bandwidthKhz,
-    required int stepKhz,
-    required int dwellMs,
-    required int thresholdDb,
-  }) =>
-      throw UnsupportedError('Spectrum scan not supported over serial');
-
-  @override
-  Future<void> setTxPower(int powerDbm) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetTxPower(powerDbm),
-      );
+  Future<void> setTxPower(int powerDbm) => _commandSender
+      .writeDataAndWaitForAck(FrameBuilder.buildSetTxPower(powerDbm));
 
   @override
   Future<void> setOtherParams({
@@ -413,15 +410,14 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     required int telemetryModes,
     required int advertLocationPolicy,
     int multiAcks = 0,
-  }) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetOtherParams(
-          manualAddContacts: manualAddContacts,
-          telemetryModes: telemetryModes,
-          advertLocationPolicy: advertLocationPolicy,
-          multiAcks: multiAcks,
-        ),
-      );
+  }) => _commandSender.writeDataAndWaitForAck(
+    FrameBuilder.buildSetOtherParams(
+      manualAddContacts: manualAddContacts,
+      telemetryModes: telemetryModes,
+      advertLocationPolicy: advertLocationPolicy,
+      multiAcks: multiAcks,
+    ),
+  );
 
   @override
   Future<Map<String, dynamic>> getAutoaddConfig() =>
@@ -438,23 +434,20 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     required bool autoAddSensors,
     required bool overwriteOldest,
     int maxHops = 0,
-  }) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetAutoaddConfig(
-          autoAddUsers: autoAddUsers,
-          autoAddRepeaters: autoAddRepeaters,
-          autoAddRoomServers: autoAddRoomServers,
-          autoAddSensors: autoAddSensors,
-          overwriteOldest: overwriteOldest,
-          maxHops: maxHops,
-        ),
-      );
+  }) => _commandSender.writeDataAndWaitForAck(
+    FrameBuilder.buildSetAutoaddConfig(
+      autoAddUsers: autoAddUsers,
+      autoAddRepeaters: autoAddRepeaters,
+      autoAddRoomServers: autoAddRoomServers,
+      autoAddSensors: autoAddSensors,
+      overwriteOldest: overwriteOldest,
+      maxHops: maxHops,
+    ),
+  );
 
   @override
-  Future<void> setPathHashMode(int mode) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetPathHashMode(mode),
-      );
+  Future<void> setPathHashMode(int mode) => _commandSender
+      .writeDataAndWaitForAck(FrameBuilder.buildSetPathHashMode(mode));
 
   @override
   Future<void> refreshDeviceInfo() async {
@@ -473,19 +466,16 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
   Future<void> loginToRoom({
     required Uint8List roomPublicKey,
     required String password,
-  }) =>
-      _commandSender.writeData(
-        FrameBuilder.buildSendLogin(
-          roomPublicKey: roomPublicKey,
-          password: password,
-        ),
-      );
+  }) => _commandSender.writeData(
+    FrameBuilder.buildSendLogin(
+      roomPublicKey: roomPublicKey,
+      password: password,
+    ),
+  );
 
   @override
-  Future<void> sendStatusRequest(Uint8List contactPublicKey) =>
-      _commandSender.writeData(
-        FrameBuilder.buildSendStatusReq(contactPublicKey),
-      );
+  Future<void> sendStatusRequest(Uint8List contactPublicKey) => _commandSender
+      .writeData(FrameBuilder.buildSendStatusReq(contactPublicKey));
 
   @override
   Future<({int tag, int suggestedTimeoutMs})> sendAnonRequest({
@@ -508,19 +498,15 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
 
   @override
   Future<void> resetPath(Uint8List contactPublicKey) =>
-      _commandSender.writeData(
-        FrameBuilder.buildResetPath(contactPublicKey),
-      );
+      _commandSender.writeData(FrameBuilder.buildResetPath(contactPublicKey));
 
   @override
   Future<void> factoryReset() =>
       _commandSender.writeData(FrameBuilder.buildFactoryReset());
 
   @override
-  Future<void> removeContact(Uint8List contactPublicKey) =>
-      _commandSender.writeData(
-        FrameBuilder.buildRemoveContact(contactPublicKey),
-      );
+  Future<void> removeContact(Uint8List contactPublicKey) => _commandSender
+      .writeData(FrameBuilder.buildRemoveContact(contactPublicKey));
 
   @override
   Future<void> getChannel(int channelIdx) =>
@@ -534,14 +520,13 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     required int channelIdx,
     required String channelName,
     required List<int> secret,
-  }) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetChannel(
-          channelIdx: channelIdx,
-          channelName: channelName,
-          secret: secret,
-        ),
-      );
+  }) => _commandSender.writeDataAndWaitForAck(
+    FrameBuilder.buildSetChannel(
+      channelIdx: channelIdx,
+      channelName: channelName,
+      secret: secret,
+    ),
+  );
 
   @override
   Future<void> deleteChannel(int channelIdx) => setChannel(
@@ -572,10 +557,8 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
       );
 
   @override
-  Future<void> setCustomVar(String key, String value) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetCustomVar(key, value),
-      );
+  Future<void> setCustomVar(String key, String value) => _commandSender
+      .writeDataAndWaitForAck(FrameBuilder.buildSetCustomVar(key, value));
 
   @override
   void clearPacketLogs() {
@@ -588,9 +571,6 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     _commandSender.resetCounter();
     _responseHandler.resetCounter();
   }
-
-  @override
-  void setSpectrumScanActive(bool active) {}
 
   @override
   void dispose() {

@@ -5,7 +5,6 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'models/contact.dart';
 import 'models/message.dart';
 import 'models/ble_packet_log.dart';
-import 'models/spectrum_scan.dart';
 import 'ble/ble_connection_manager.dart';
 import 'ble/ble_command_sender.dart';
 import 'ble/ble_response_handler.dart';
@@ -73,8 +72,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   // Keep limits aligned with companion frame/payload constraints.
   static const int _maxContactMessageBytes = 150;
   static const int _maxChannelMessageBytes = 160;
-  static const Duration _scanTimeoutPadding = Duration(seconds: 8);
-  static const int _scanSettleMs = 12;
 
   /// App name reported to the device during handshake (CMD_APP_START).
   /// Override with your application's name so the device can identify it.
@@ -88,7 +85,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   // Keepalive timer for iOS background mode
   Timer? _keepaliveTimer;
   static const Duration _keepaliveInterval = Duration(seconds: 20);
-  bool _isSpectrumScanActive = false;
   bool _isSessionReady = false;
   bool _isBurstSyncActive = false;
   Completer<Map<String, dynamic>>? _pendingDeviceInfoCompleter;
@@ -124,6 +120,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
   OnRawDataReceivedCallback? onRawDataReceived;
+  OnChannelDataReceivedCallback? onChannelDataReceived;
 
   // Activity callbacks (for blinking indicators)
   VoidCallback? onRxActivity;
@@ -294,6 +291,17 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     _responseHandler.onRawDataReceived = (payload, snrRaw, rssiDbm) {
       onRawDataReceived?.call(payload, snrRaw, rssiDbm);
     };
+    _responseHandler.onChannelDataReceived =
+        (channelIdx, pathLen, dataType, payload, snrRaw, rssiDbm) {
+          onChannelDataReceived?.call(
+            channelIdx,
+            pathLen,
+            dataType,
+            payload,
+            snrRaw,
+            rssiDbm,
+          );
+        };
     _responseHandler.onRxActivity = () {
       onRxActivity?.call();
     };
@@ -306,7 +314,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   int get maxReconnectionAttempts => _connectionManager.maxReconnectionAttempts;
   int get rxPacketCount => _responseHandler.rxPacketCount;
   int get txPacketCount => _commandSender.txPacketCount;
-  bool get isSpectrumScanActive => _isSpectrumScanActive;
   List<BlePacketLog> get packetLogs {
     // Merge logs from both sender and handler
     final allLogs = [
@@ -399,7 +406,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Refresh device info (public method)
   Future<void> refreshDeviceInfo() async {
-    _ensureSpectrumScanNotActive('refresh device info');
     await _initializeSession();
   }
 
@@ -568,6 +574,29 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     );
   }
 
+  @override
+  Future<void> sendChannelData({
+    required int channelIdx,
+    required int dataType,
+    required Uint8List payload,
+  }) async {
+    if (dataType == 0) {
+      throw ArgumentError.value(dataType, 'dataType', 'must be non-zero');
+    }
+    if (payload.length > MeshCoreConstants.maxChannelDataLength) {
+      throw ArgumentError(
+        'Channel datagram exceeds ${MeshCoreConstants.maxChannelDataLength} bytes',
+      );
+    }
+    await _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildSendChannelData(
+        channelIdx: channelIdx,
+        dataType: dataType,
+        payload: payload,
+      ),
+    );
+  }
+
   /// Request telemetry (GPS, battery) from contact
   Future<void> requestTelemetry(
     Uint8List contactPublicKey, {
@@ -632,7 +661,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Sync next message from device queue
   Future<void> syncNextMessage() async {
-    _ensureSpectrumScanNotActive('sync messages');
     await _commandSender.writeData(FrameBuilder.buildSyncNextMessage());
   }
 
@@ -672,7 +700,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Send self advertisement packet to mesh network
   Future<void> sendSelfAdvert({bool floodMode = true}) async {
-    _ensureSpectrumScanNotActive('send advert');
     await _commandSender.writeData(
       FrameBuilder.buildSendSelfAdvert(floodMode: floodMode),
     );
@@ -680,7 +707,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Set advertised name
   Future<void> setAdvertName(String name) async {
-    _ensureSpectrumScanNotActive('set advert name');
     await _commandSender.writeDataAndWaitForAck(
       FrameBuilder.buildSetAdvertName(name),
     );
@@ -691,7 +717,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     required double latitude,
     required double longitude,
   }) async {
-    _ensureSpectrumScanNotActive('set advert location');
     // This command updates device's advertised location
     // Fire-and-forget - no ACK needed since actual broadcast happens via sendSelfAdvert
     await _commandSender.writeData(
@@ -711,7 +736,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     required int codingRate,
     bool? repeat,
   }) async {
-    _ensureSpectrumScanNotActive('set radio params');
     await _commandSender.writeDataAndWaitForAck(
       FrameBuilder.buildSetRadioParams(
         frequency: frequency,
@@ -725,48 +749,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
   /// Query allowed repeat frequencies (firmware v9+)
   Future<void> getAllowedRepeatFreq() async {
-    _ensureSpectrumScanNotActive('get allowed repeat frequencies');
     await _commandSender.writeData(FrameBuilder.buildGetAllowedRepeatFreq());
-  }
-
-  @override
-  Future<SpectrumScanResult> scanSpectrum({
-    required int startFrequencyKhz,
-    required int stopFrequencyKhz,
-    required int bandwidthKhz,
-    required int stepKhz,
-    required int dwellMs,
-    required int thresholdDb,
-  }) async {
-    _isSpectrumScanActive = true;
-    _stopKeepalive();
-    try {
-      final timeout = _estimateSpectrumScanTimeout(
-        startFrequencyKhz: startFrequencyKhz,
-        stopFrequencyKhz: stopFrequencyKhz,
-        bandwidthKhz: bandwidthKhz,
-        stepKhz: stepKhz,
-        dwellMs: dwellMs,
-      );
-      return await _commandSender
-          .writeDataAndWaitForResponse<SpectrumScanResult>(
-            FrameBuilder.buildScanSpectrum(
-              startFrequencyKhz: startFrequencyKhz,
-              stopFrequencyKhz: stopFrequencyKhz,
-              bandwidthKhz: bandwidthKhz,
-              stepKhz: stepKhz,
-              dwellMs: dwellMs,
-              thresholdDb: thresholdDb,
-            ),
-            MeshCoreConstants.respSpectrumScan,
-            timeout: timeout,
-          );
-    } finally {
-      _isSpectrumScanActive = false;
-      if (isConnected) {
-        _startKeepalive();
-      }
-    }
   }
 
   /// Set transmit power
@@ -999,7 +982,9 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   /// official MeshCore app behaviour.
   @override
   Future<void> syncAllChannels({int maxChannels = 40}) async {
-    debugPrint('📻 [Service] Syncing channels (1-${maxChannels - 1}) in burst...');
+    debugPrint(
+      '📻 [Service] Syncing channels (1-${maxChannels - 1}) in burst...',
+    );
     _isBurstSyncActive = true;
 
     final completer = Completer<void>();
@@ -1017,13 +1002,13 @@ class MeshCoreBleService extends MeshCoreServiceBase {
 
     _responseHandler.onChannelInfoReceived =
         (int channelIdx, String channelName, Uint8List secret, int? flags) {
-      received++;
-      // Forward to the original callback
-      prevChannelCallback?.call(channelIdx, channelName, secret, flags);
-      if (received >= sent && !completer.isCompleted) {
-        finish();
-      }
-    };
+          received++;
+          // Forward to the original callback
+          prevChannelCallback?.call(channelIdx, channelName, secret, flags);
+          if (received >= sent && !completer.isCompleted) {
+            finish();
+          }
+        };
 
     _responseHandler.onError = (String error, {int? errorCode}) {
       // Forward the error
@@ -1062,7 +1047,9 @@ class MeshCoreBleService extends MeshCoreServiceBase {
       },
     );
 
-    debugPrint('✅ [Service] Channel sync complete ($received channels received)');
+    debugPrint(
+      '✅ [Service] Channel sync complete ($received channels received)',
+    );
   }
 
   /// Clear packet logs
@@ -1092,10 +1079,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
       if (!isConnected) {
         debugPrint('⚠️ [BLE] Keepalive: Not connected, stopping timer');
         _stopKeepalive();
-        return;
-      }
-
-      if (_isSpectrumScanActive) {
         return;
       }
 
@@ -1129,22 +1112,6 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     _connectionManager.dispose();
     _commandSender.dispose();
     _responseHandler.dispose();
-  }
-
-  @override
-  void setSpectrumScanActive(bool active) {
-    _isSpectrumScanActive = active;
-    if (active) {
-      _stopKeepalive();
-    } else if (isConnected) {
-      _startKeepalive();
-    }
-  }
-
-  void _ensureSpectrumScanNotActive(String action) {
-    if (_isSpectrumScanActive) {
-      throw StateError('Cannot $action during spectrum scan');
-    }
   }
 
   Future<Map<String, dynamic>> _sendAndAwaitDeviceInfo() async {
@@ -1197,24 +1164,5 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     }
 
     throw TimeoutException('Self info request failed');
-  }
-
-  Duration _estimateSpectrumScanTimeout({
-    required int startFrequencyKhz,
-    required int stopFrequencyKhz,
-    required int bandwidthKhz,
-    required int stepKhz,
-    required int dwellMs,
-  }) {
-    final halfBandwidthKhz = bandwidthKhz / 2.0;
-    final firstCenterKhz = startFrequencyKhz + halfBandwidthKhz;
-    final lastCenterKhz = stopFrequencyKhz - halfBandwidthKhz;
-    final spanKhz = lastCenterKhz - firstCenterKhz;
-    final safeStepKhz = stepKhz <= 0
-        ? (bandwidthKhz / 2).clamp(1, 1000)
-        : stepKhz;
-    final windowCount = spanKhz < 0 ? 1 : (spanKhz / safeStepKhz).floor() + 1;
-    final totalMs = windowCount * (dwellMs + _scanSettleMs);
-    return Duration(milliseconds: totalMs) + _scanTimeoutPadding;
   }
 }

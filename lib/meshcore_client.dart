@@ -22,7 +22,6 @@ export 'src/models/contact_telemetry.dart';
 export 'src/models/ble_packet_log.dart';
 export 'src/models/message.dart';
 export 'src/models/sent_message_tracker.dart';
-export 'src/models/spectrum_scan.dart';
 
 // Protocol frame parsing / building
 export 'src/protocol/frame_parser.dart';
@@ -35,4 +34,5 @@ export 'src/meshcore_tcp_service.dart';
 export 'src/meshcore_serial_service.dart';
 
 // BLE layer callback types (needed for onRawDataReceived wiring)
-export 'src/ble/ble_response_handler.dart' show OnRawDataReceivedCallback;
+export 'src/ble/ble_response_handler.dart'
+    show OnChannelDataReceivedCallback, OnRawDataReceivedCallback;

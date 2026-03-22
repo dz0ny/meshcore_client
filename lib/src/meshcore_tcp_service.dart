@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'models/contact.dart';
 import 'models/ble_packet_log.dart';
-import 'models/spectrum_scan.dart';
 import 'ble/ble_command_sender.dart';
 import 'ble/ble_response_handler.dart';
 import 'protocol/frame_builder.dart';
@@ -24,8 +23,6 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   // Keep limits aligned with companion frame/payload constraints.
   static const int _maxContactMessageBytes = 150;
   static const int _maxChannelMessageBytes = 160;
-  static const Duration _scanTimeoutPadding = Duration(seconds: 8);
-  static const int _scanSettleMs = 12;
 
   final String appName;
 
@@ -48,7 +45,6 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   // Keepalive timer
   Timer? _keepaliveTimer;
   static const Duration _keepaliveInterval = Duration(seconds: 20);
-  bool _isSpectrumScanActive = false;
 
   static const int _maxReconnectionAttempts = 30;
   static const List<int> _reconnectionDelaysMs = [
@@ -89,8 +85,6 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
 
   @override
   int get txPacketCount => _commandSender.txPacketCount;
-  @override
-  bool get isSpectrumScanActive => _isSpectrumScanActive;
 
   @override
   List<BlePacketLog> get packetLogs {
@@ -160,6 +154,16 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
         onAutoaddConfigReceived?.call(config);
     _responseHandler.onRawDataReceived = (payload, snr, rssi) =>
         onRawDataReceived?.call(payload, snr, rssi);
+    _responseHandler.onChannelDataReceived =
+        (channelIdx, pathLen, dataType, payload, snrRaw, rssiDbm) =>
+            onChannelDataReceived?.call(
+              channelIdx,
+              pathLen,
+              dataType,
+              payload,
+              snrRaw,
+              rssiDbm,
+            );
     _responseHandler.onRxActivity = () => onRxActivity?.call();
   }
 
@@ -351,9 +355,6 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
         _stopKeepalive();
         return;
       }
-      if (_isSpectrumScanActive) {
-        return;
-      }
       try {
         await syncNextMessage();
       } catch (e) {
@@ -508,6 +509,29 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   );
 
   @override
+  Future<void> sendChannelData({
+    required int channelIdx,
+    required int dataType,
+    required Uint8List payload,
+  }) {
+    if (dataType == 0) {
+      throw ArgumentError.value(dataType, 'dataType', 'must be non-zero');
+    }
+    if (payload.length > MeshCoreConstants.maxChannelDataLength) {
+      throw ArgumentError(
+        'Channel datagram exceeds ${MeshCoreConstants.maxChannelDataLength} bytes',
+      );
+    }
+    return _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildSendChannelData(
+        channelIdx: channelIdx,
+        dataType: dataType,
+        payload: payload,
+      ),
+    );
+  }
+
+  @override
   Future<void> requestTelemetry(
     Uint8List contactPublicKey, {
     bool zeroHop = false,
@@ -531,10 +555,8 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
       _commandSender.writeData(FrameBuilder.buildSendControlData(payload));
 
   @override
-  Future<void> syncNextMessage() => _guardSpectrumScan(
-    'sync messages',
-    () => _commandSender.writeData(FrameBuilder.buildSyncNextMessage()),
-  );
+  Future<void> syncNextMessage() =>
+      _commandSender.writeData(FrameBuilder.buildSyncNextMessage());
 
   @override
   Future<void> getDeviceTime() =>
@@ -556,14 +578,8 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
   Future<void> setAdvertLatLon({
     required double latitude,
     required double longitude,
-  }) => _guardSpectrumScan(
-    'set advert location',
-    () => _commandSender.writeData(
-      FrameBuilder.buildSetAdvertLatLon(
-        latitude: latitude,
-        longitude: longitude,
-      ),
-    ),
+  }) => _commandSender.writeData(
+    FrameBuilder.buildSetAdvertLatLon(latitude: latitude, longitude: longitude),
   );
 
   @override
@@ -573,63 +589,19 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     required int spreadingFactor,
     required int codingRate,
     bool? repeat,
-  }) => _guardSpectrumScan(
-    'set radio params',
-    () => _commandSender.writeDataAndWaitForAck(
-      FrameBuilder.buildSetRadioParams(
-        frequency: frequency,
-        bandwidth: bandwidth,
-        spreadingFactor: spreadingFactor,
-        codingRate: codingRate,
-        repeat: repeat == null ? null : (repeat ? 1 : 0),
-      ),
+  }) => _commandSender.writeDataAndWaitForAck(
+    FrameBuilder.buildSetRadioParams(
+      frequency: frequency,
+      bandwidth: bandwidth,
+      spreadingFactor: spreadingFactor,
+      codingRate: codingRate,
+      repeat: repeat == null ? null : (repeat ? 1 : 0),
     ),
   );
 
   @override
-  Future<void> getAllowedRepeatFreq() => _guardSpectrumScan(
-    'get allowed repeat frequencies',
-    () => _commandSender.writeData(FrameBuilder.buildGetAllowedRepeatFreq()),
-  );
-
-  @override
-  Future<SpectrumScanResult> scanSpectrum({
-    required int startFrequencyKhz,
-    required int stopFrequencyKhz,
-    required int bandwidthKhz,
-    required int stepKhz,
-    required int dwellMs,
-    required int thresholdDb,
-  }) {
-    _isSpectrumScanActive = true;
-    _stopKeepalive();
-    final timeout = _estimateSpectrumScanTimeout(
-      startFrequencyKhz: startFrequencyKhz,
-      stopFrequencyKhz: stopFrequencyKhz,
-      bandwidthKhz: bandwidthKhz,
-      stepKhz: stepKhz,
-      dwellMs: dwellMs,
-    );
-    return _commandSender
-        .writeDataAndWaitForResponse<SpectrumScanResult>(
-          FrameBuilder.buildScanSpectrum(
-            startFrequencyKhz: startFrequencyKhz,
-            stopFrequencyKhz: stopFrequencyKhz,
-            bandwidthKhz: bandwidthKhz,
-            stepKhz: stepKhz,
-            dwellMs: dwellMs,
-            thresholdDb: thresholdDb,
-          ),
-          MeshCoreConstants.respSpectrumScan,
-          timeout: timeout,
-        )
-        .whenComplete(() {
-          _isSpectrumScanActive = false;
-          if (_isConnected) {
-            _startKeepalive();
-          }
-        });
-  }
+  Future<void> getAllowedRepeatFreq() =>
+      _commandSender.writeData(FrameBuilder.buildGetAllowedRepeatFreq());
 
   @override
   Future<void> setTxPower(int powerDbm) => _commandSender
@@ -695,32 +667,10 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
       );
 
   @override
-  Future<void> setCustomVar(String key, String value) =>
-      _commandSender.writeDataAndWaitForAck(
-        FrameBuilder.buildSetCustomVar(key, value),
-      );
+  Future<void> setCustomVar(String key, String value) => _commandSender
+      .writeDataAndWaitForAck(FrameBuilder.buildSetCustomVar(key, value));
 
   Future<void> refreshDeviceInfo() => _sendDeviceQuery();
-
-  @override
-  void setSpectrumScanActive(bool active) {
-    _isSpectrumScanActive = active;
-    if (active) {
-      _stopKeepalive();
-    } else if (_isConnected) {
-      _startKeepalive();
-    }
-  }
-
-  Future<T> _guardSpectrumScan<T>(
-    String action,
-    Future<T> Function() operation,
-  ) {
-    if (_isSpectrumScanActive) {
-      throw StateError('Cannot $action during spectrum scan');
-    }
-    return operation();
-  }
 
   @override
   Future<void> getBatteryAndStorage() =>
@@ -815,12 +765,12 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
 
     _responseHandler.onChannelInfoReceived =
         (int channelIdx, String channelName, Uint8List secret, int? flags) {
-      received++;
-      prevChannelCallback?.call(channelIdx, channelName, secret, flags);
-      if (received >= sent && !completer.isCompleted) {
-        finish();
-      }
-    };
+          received++;
+          prevChannelCallback?.call(channelIdx, channelName, secret, flags);
+          if (received >= sent && !completer.isCompleted) {
+            finish();
+          }
+        };
 
     _responseHandler.onError = (String error, {int? errorCode}) {
       prevErrorCallback?.call(error, errorCode: errorCode);
@@ -878,24 +828,5 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     _socket = null;
     _commandSender.dispose();
     _responseHandler.dispose();
-  }
-
-  Duration _estimateSpectrumScanTimeout({
-    required int startFrequencyKhz,
-    required int stopFrequencyKhz,
-    required int bandwidthKhz,
-    required int stepKhz,
-    required int dwellMs,
-  }) {
-    final halfBandwidthKhz = bandwidthKhz / 2.0;
-    final firstCenterKhz = startFrequencyKhz + halfBandwidthKhz;
-    final lastCenterKhz = stopFrequencyKhz - halfBandwidthKhz;
-    final spanKhz = lastCenterKhz - firstCenterKhz;
-    final safeStepKhz = stepKhz <= 0
-        ? (bandwidthKhz / 2).clamp(1, 1000)
-        : stepKhz;
-    final windowCount = spanKhz < 0 ? 1 : (spanKhz / safeStepKhz).floor() + 1;
-    final totalMs = windowCount * (dwellMs + _scanSettleMs);
-    return Duration(milliseconds: totalMs) + _scanTimeoutPadding;
   }
 }

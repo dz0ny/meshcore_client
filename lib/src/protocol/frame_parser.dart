@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import '../models/contact.dart';
 import '../models/message.dart';
-import '../models/spectrum_scan.dart';
 import '../buffer_reader.dart';
 import '../helpers/smaz.dart';
 import '../meshcore_constants.dart';
@@ -127,8 +126,7 @@ class FrameParser {
       // Signed message format: [4-byte room post author prefix][UTF-8 text]
       // The author prefix identifies who originally posted in a room.
       if (reader.remainingBytesCount >= 4) {
-        roomPostAuthorPrefix =
-            Uint8List.fromList(reader.readBytes(4));
+        roomPostAuthorPrefix = Uint8List.fromList(reader.readBytes(4));
         text = reader.hasRemaining ? reader.readString() : '';
       } else {
         text = reader.readString();
@@ -318,18 +316,6 @@ class FrameParser {
       pathHashMode = reader.readByte();
     }
 
-    bool? supportsSpectrumScan;
-    if (reader.hasRemaining) {
-      supportsSpectrumScan = reader.readByte() != 0;
-    }
-
-    int? spectrumScanMinKhz;
-    int? spectrumScanMaxKhz;
-    if (reader.remainingBytesCount >= 8) {
-      spectrumScanMinKhz = reader.readUInt32LE();
-      spectrumScanMaxKhz = reader.readUInt32LE();
-    }
-
     return {
       'firmwareVersion': firmwareVersion,
       'maxContacts': maxContacts,
@@ -340,9 +326,6 @@ class FrameParser {
       'semanticVersion': semanticVersion,
       'clientRepeat': clientRepeat,
       'pathHashMode': pathHashMode,
-      'supportsSpectrumScan': supportsSpectrumScan,
-      'spectrumScanMinKhz': spectrumScanMinKhz,
-      'spectrumScanMaxKhz': spectrumScanMaxKhz,
     };
   }
 
@@ -358,29 +341,6 @@ class FrameParser {
       ranges.add((lower: lower, upper: upper));
     }
     return ranges;
-  }
-
-  static SpectrumScanResult parseSpectrumScan(BufferReader reader) {
-    final count = reader.hasRemaining ? reader.readByte() : 0;
-    final candidates = <SpectrumScanCandidate>[];
-
-    for (var i = 0; i < count && reader.remainingBytesCount >= 8; i++) {
-      final centerFrequencyKhz = reader.readUInt32LE();
-      final occupancyPercent = reader.readByte();
-      final peakRssiDbm = reader.readInt8();
-      final avgRssiDbm = reader.readInt8();
-      reader.readByte();
-      candidates.add(
-        SpectrumScanCandidate(
-          centerFrequencyKhz: centerFrequencyKhz,
-          occupancyPercent: occupancyPercent,
-          peakRssiDbm: peakRssiDbm,
-          avgRssiDbm: avgRssiDbm,
-        ),
-      );
-    }
-
-    return SpectrumScanResult(candidates: candidates);
   }
 
   /// Parse SelfInfo response

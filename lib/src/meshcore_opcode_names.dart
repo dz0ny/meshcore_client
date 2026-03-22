@@ -113,8 +113,8 @@ class MeshCoreOpcodeNames {
         return 'GET_ALLOWED_REPEAT_FREQ';
       case MeshCoreConstants.cmdSetPathHashMode:
         return 'SET_PATH_HASH_MODE';
-      case MeshCoreConstants.cmdScanSpectrum:
-        return 'SCAN_SPECTRUM';
+      case MeshCoreConstants.cmdSendChannelData:
+        return 'SEND_CHANNEL_DATA';
       default:
         return 'CMD_UNKNOWN';
     }
@@ -177,8 +177,8 @@ class MeshCoreOpcodeNames {
         return 'AUTOADD_CONFIG';
       case MeshCoreConstants.respAllowedRepeatFreq:
         return 'ALLOWED_REPEAT_FREQ';
-      case MeshCoreConstants.respSpectrumScan:
-        return 'SPECTRUM_SCAN';
+      case MeshCoreConstants.respChannelDataRecv:
+        return 'CHANNEL_DATA_RECV';
       default:
         return 'RESP_UNKNOWN';
     }
