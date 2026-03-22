@@ -466,19 +466,29 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     required int channelIdx,
     required String text,
     int textType = 0,
-  }) {
+    Uint8List? floodScopeKey,
+  }) async {
     if (utf8.encode(text).length > _maxChannelMessageBytes) {
       throw ArgumentError(
         'Channel message exceeds $_maxChannelMessageBytes UTF-8 bytes',
       );
     }
-    return _commandSender.writeDataAndWaitForAck(
-      FrameBuilder.buildSendChannelTxtMsg(
-        channelIdx: channelIdx,
-        text: text,
-        textType: textType,
-      ),
-    );
+    if (floodScopeKey != null) {
+      await setFloodScope(floodScopeKey);
+    }
+    try {
+      await _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildSendChannelTxtMsg(
+          channelIdx: channelIdx,
+          text: text,
+          textType: textType,
+        ),
+      );
+    } finally {
+      if (floodScopeKey != null) {
+        await clearFloodScope();
+      }
+    }
   }
 
   @override
@@ -513,7 +523,8 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     required int channelIdx,
     required int dataType,
     required Uint8List payload,
-  }) {
+    Uint8List? floodScopeKey,
+  }) async {
     if (dataType == 0) {
       throw ArgumentError.value(dataType, 'dataType', 'must be non-zero');
     }
@@ -522,14 +533,35 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
         'Channel datagram exceeds ${MeshCoreConstants.maxChannelDataLength} bytes',
       );
     }
-    return _commandSender.writeDataAndWaitForAck(
-      FrameBuilder.buildSendChannelData(
-        channelIdx: channelIdx,
-        dataType: dataType,
-        payload: payload,
-      ),
-    );
+    if (floodScopeKey != null) {
+      await setFloodScope(floodScopeKey);
+    }
+    try {
+      await _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildSendChannelData(
+          channelIdx: channelIdx,
+          dataType: dataType,
+          payload: payload,
+        ),
+      );
+    } finally {
+      if (floodScopeKey != null) {
+        await clearFloodScope();
+      }
+    }
   }
+
+  @override
+  Future<void> setFloodScope(Uint8List scopeKey) =>
+      _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildSetFloodScope(scopeKey),
+      );
+
+  @override
+  Future<void> clearFloodScope() =>
+      _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildClearFloodScope(),
+      );
 
   @override
   Future<void> requestTelemetry(

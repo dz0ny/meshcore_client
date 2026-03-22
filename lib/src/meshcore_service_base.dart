@@ -87,6 +87,7 @@ abstract class MeshCoreServiceBase {
     required int channelIdx,
     required String text,
     int textType = 0,
+    Uint8List? floodScopeKey,
   });
 
   void trackSentChannelMessage(
@@ -105,6 +106,7 @@ abstract class MeshCoreServiceBase {
     required int channelIdx,
     required int dataType,
     required Uint8List payload,
+    Uint8List? floodScopeKey,
   });
 
   Future<void> requestTelemetry(
@@ -116,6 +118,14 @@ abstract class MeshCoreServiceBase {
     required Uint8List contactPublicKey,
     required Uint8List requestData,
   });
+
+  /// Set the flood scope transport key (firmware v8+).
+  /// All subsequent flood sends will be tagged with this scope.
+  Future<void> setFloodScope(Uint8List scopeKey);
+
+  /// Clear the flood scope (firmware v8+).
+  /// Subsequent flood sends will be unscoped.
+  Future<void> clearFloodScope();
 
   Future<void> sendControlData(Uint8List payload);
 

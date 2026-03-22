@@ -360,6 +360,34 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build SetFloodScope command (firmware v8+)
+  ///
+  /// Sets the transport scope key used for all subsequent flood sends.
+  /// [scopeKey] must be exactly 16 bytes (SHA256(region_name)[0:16]).
+  /// Repeaters only forward packets whose scope matches their allowed regions.
+  static Uint8List buildSetFloodScope(Uint8List scopeKey) {
+    if (scopeKey.length != 16) {
+      throw ArgumentError(
+        'Flood scope key must be exactly 16 bytes (got ${scopeKey.length})',
+      );
+    }
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSetFloodScope); // 54
+    writer.writeByte(0); // sub-command (always 0)
+    writer.writeBytes(scopeKey);
+    return writer.toBytes();
+  }
+
+  /// Build ClearFloodScope command (firmware v8+)
+  ///
+  /// Clears the transport scope so subsequent flood sends are unscoped.
+  static Uint8List buildClearFloodScope() {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSetFloodScope); // 54
+    writer.writeByte(0); // sub-command (always 0)
+    return writer.toBytes();
+  }
+
   /// Build SendControlData command (firmware v8+)
   static Uint8List buildSendControlData(Uint8List payload) {
     final writer = BufferWriter();

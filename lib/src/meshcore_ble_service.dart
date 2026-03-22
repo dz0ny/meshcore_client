@@ -552,10 +552,13 @@ class MeshCoreBleService extends MeshCoreServiceBase {
   ///
   /// Channel messages are ephemeral and use flood routing (no ACKs).
   /// Use channel 0 for the default public channel.
+  /// If [floodScopeKey] is provided, sets the scope before sending and clears after.
+  @override
   Future<void> sendChannelMessage({
     required int channelIdx,
     required String text,
     int textType = 0,
+    Uint8List? floodScopeKey,
   }) async {
     if (utf8.encode(text).length > _maxChannelMessageBytes) {
       throw ArgumentError(
@@ -563,15 +566,22 @@ class MeshCoreBleService extends MeshCoreServiceBase {
       );
     }
 
-    // Wait for generic ACK/ERR from firmware so invalid channel sends
-    // (e.g. missing channel slot) are surfaced to callers.
-    await _commandSender.writeDataAndWaitForAck(
-      FrameBuilder.buildSendChannelTxtMsg(
-        channelIdx: channelIdx,
-        text: text,
-        textType: textType,
-      ),
-    );
+    if (floodScopeKey != null) {
+      await setFloodScope(floodScopeKey);
+    }
+    try {
+      await _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildSendChannelTxtMsg(
+          channelIdx: channelIdx,
+          text: text,
+          textType: textType,
+        ),
+      );
+    } finally {
+      if (floodScopeKey != null) {
+        await clearFloodScope();
+      }
+    }
   }
 
   @override
@@ -579,6 +589,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     required int channelIdx,
     required int dataType,
     required Uint8List payload,
+    Uint8List? floodScopeKey,
   }) async {
     if (dataType == 0) {
       throw ArgumentError.value(dataType, 'dataType', 'must be non-zero');
@@ -588,12 +599,36 @@ class MeshCoreBleService extends MeshCoreServiceBase {
         'Channel datagram exceeds ${MeshCoreConstants.maxChannelDataLength} bytes',
       );
     }
+
+    if (floodScopeKey != null) {
+      await setFloodScope(floodScopeKey);
+    }
+    try {
+      await _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildSendChannelData(
+          channelIdx: channelIdx,
+          dataType: dataType,
+          payload: payload,
+        ),
+      );
+    } finally {
+      if (floodScopeKey != null) {
+        await clearFloodScope();
+      }
+    }
+  }
+
+  @override
+  Future<void> setFloodScope(Uint8List scopeKey) async {
     await _commandSender.writeDataAndWaitForAck(
-      FrameBuilder.buildSendChannelData(
-        channelIdx: channelIdx,
-        dataType: dataType,
-        payload: payload,
-      ),
+      FrameBuilder.buildSetFloodScope(scopeKey),
+    );
+  }
+
+  @override
+  Future<void> clearFloodScope() async {
+    await _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildClearFloodScope(),
     );
   }
 
