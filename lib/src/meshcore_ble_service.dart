@@ -808,6 +808,7 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     required bool autoAddRoomServers,
     required bool autoAddSensors,
     required bool overwriteOldest,
+    int maxHops = 0,
   }) async {
     await _commandSender.writeDataAndWaitForAck(
       FrameBuilder.buildSetAutoaddConfig(
@@ -816,7 +817,15 @@ class MeshCoreBleService extends MeshCoreServiceBase {
         autoAddRoomServers: autoAddRoomServers,
         autoAddSensors: autoAddSensors,
         overwriteOldest: overwriteOldest,
+        maxHops: maxHops,
       ),
+    );
+  }
+
+  @override
+  Future<void> setPathHashMode(int mode) async {
+    await _commandSender.writeDataAndWaitForAck(
+      FrameBuilder.buildSetPathHashMode(mode),
     );
   }
 

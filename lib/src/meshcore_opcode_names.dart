@@ -111,6 +111,8 @@ class MeshCoreOpcodeNames {
         return 'GET_AUTOADD_CONFIG';
       case MeshCoreConstants.cmdGetAllowedRepeatFreq:
         return 'GET_ALLOWED_REPEAT_FREQ';
+      case MeshCoreConstants.cmdSetPathHashMode:
+        return 'SET_PATH_HASH_MODE';
       case MeshCoreConstants.cmdScanSpectrum:
         return 'SCAN_SPECTRUM';
       default:

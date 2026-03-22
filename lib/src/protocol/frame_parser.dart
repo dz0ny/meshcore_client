@@ -313,6 +313,11 @@ class FrameParser {
       clientRepeat = reader.readByte() != 0;
     }
 
+    int? pathHashMode;
+    if (reader.hasRemaining) {
+      pathHashMode = reader.readByte();
+    }
+
     bool? supportsSpectrumScan;
     if (reader.hasRemaining) {
       supportsSpectrumScan = reader.readByte() != 0;
@@ -334,6 +339,7 @@ class FrameParser {
       'manufacturerModel': manufacturerModel,
       'semanticVersion': semanticVersion,
       'clientRepeat': clientRepeat,
+      'pathHashMode': pathHashMode,
       'supportsSpectrumScan': supportsSpectrumScan,
       'spectrumScanMinKhz': spectrumScanMinKhz,
       'spectrumScanMaxKhz': spectrumScanMaxKhz,
@@ -399,9 +405,9 @@ class FrameParser {
       Uint8List.fromList(advLonBytes),
     ).getInt32(0, Endian.little);
 
-    reader.readByte(); // multiAcks (reserved for future use)
-    reader.readByte(); // advertLocPolicy (reserved for future use)
-    reader.readByte(); // telemetryModes (reserved for future use)
+    final multiAcks = reader.readByte();
+    final advertLocPolicy = reader.readByte();
+    final telemetryModes = reader.readByte();
     final manualAddContacts = reader.readByte();
 
     final radioFreqBytes = reader.readBytes(4);
@@ -430,6 +436,9 @@ class FrameParser {
       'publicKey': publicKey,
       'advLat': advLat,
       'advLon': advLon,
+      'multiAcks': multiAcks,
+      'advertLocPolicy': advertLocPolicy,
+      'telemetryModes': telemetryModes,
       'manualAddContacts': manualAddContacts == 1,
       'radioFreq': radioFreq,
       'radioBw': radioBw,
@@ -441,12 +450,14 @@ class FrameParser {
 
   static Map<String, dynamic> parseAutoaddConfig(BufferReader reader) {
     final flags = reader.readByte();
+    final maxHops = reader.hasRemaining ? reader.readByte() : 0;
     return {
       'autoAddUsers': (flags & 0x02) != 0,
       'autoAddRepeaters': (flags & 0x04) != 0,
       'autoAddRoomServers': (flags & 0x08) != 0,
       'autoAddSensors': (flags & 0x10) != 0,
       'autoAddOverwriteOldest': (flags & 0x01) != 0,
+      'autoAddMaxHops': maxHops,
     };
   }
 

@@ -64,6 +64,7 @@ class MeshCoreConstants {
   static const int cmdSetAutoaddConfig = 58;
   static const int cmdGetAutoaddConfig = 59;
   static const int cmdGetAllowedRepeatFreq = 60;
+  static const int cmdSetPathHashMode = 61;
   static const int cmdScanSpectrum = 62;
 
   // Response Codes (Device -> App)

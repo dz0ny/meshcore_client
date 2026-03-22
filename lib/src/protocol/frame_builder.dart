@@ -304,6 +304,7 @@ class FrameBuilder {
     required bool autoAddRoomServers,
     required bool autoAddSensors,
     required bool overwriteOldest,
+    int maxHops = 0,
   }) {
     final writer = BufferWriter();
     writer.writeByte(MeshCoreConstants.cmdSetAutoaddConfig);
@@ -314,12 +315,21 @@ class FrameBuilder {
     if (autoAddRoomServers) flags |= 0x08;
     if (autoAddSensors) flags |= 0x10;
     writer.writeByte(flags);
+    writer.writeByte(maxHops);
     return writer.toBytes();
   }
 
   static Uint8List buildGetAutoaddConfig() {
     final writer = BufferWriter();
     writer.writeByte(MeshCoreConstants.cmdGetAutoaddConfig);
+    return writer.toBytes();
+  }
+
+  static Uint8List buildSetPathHashMode(int mode) {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSetPathHashMode);
+    writer.writeByte(0); // reserved
+    writer.writeByte(mode);
     return writer.toBytes();
   }
 

@@ -437,6 +437,7 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     required bool autoAddRoomServers,
     required bool autoAddSensors,
     required bool overwriteOldest,
+    int maxHops = 0,
   }) =>
       _commandSender.writeDataAndWaitForAck(
         FrameBuilder.buildSetAutoaddConfig(
@@ -445,7 +446,14 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
           autoAddRoomServers: autoAddRoomServers,
           autoAddSensors: autoAddSensors,
           overwriteOldest: overwriteOldest,
+          maxHops: maxHops,
         ),
+      );
+
+  @override
+  Future<void> setPathHashMode(int mode) =>
+      _commandSender.writeDataAndWaitForAck(
+        FrameBuilder.buildSetPathHashMode(mode),
       );
 
   @override

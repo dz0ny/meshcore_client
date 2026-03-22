@@ -156,7 +156,9 @@ abstract class MeshCoreServiceBase {
     required bool autoAddRoomServers,
     required bool autoAddSensors,
     required bool overwriteOldest,
+    int maxHops = 0,
   });
+  Future<void> setPathHashMode(int mode);
 
   Future<Uint8List> exportContact(Uint8List? publicKey);
   Future<Map<String, String>> getCustomVars();
