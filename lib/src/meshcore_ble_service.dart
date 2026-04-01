@@ -288,6 +288,9 @@ class MeshCoreBleService extends MeshCoreServiceBase {
     _responseHandler.onAutoaddConfigReceived = (config) {
       onAutoaddConfigReceived?.call(config);
     };
+    _responseHandler.onTraceDataReceived = (nonce, hopCount, snrThere, snrBack) {
+      onTraceDataReceived?.call(nonce, hopCount, snrThere, snrBack);
+    };
     _responseHandler.onRawDataReceived = (payload, snrRaw, rssiDbm) {
       onRawDataReceived?.call(payload, snrRaw, rssiDbm);
     };
@@ -651,6 +654,22 @@ class MeshCoreBleService extends MeshCoreServiceBase {
       FrameBuilder.buildSendBinaryReq(
         contactPublicKey: contactPublicKey,
         requestData: requestData,
+      ),
+    );
+  }
+
+  /// Send trace path (ping) to a contact
+  @override
+  Future<void> sendTracePath({
+    required int nonce,
+    int prefixSize = 1,
+    required Uint8List contactPublicKey,
+  }) async {
+    await _commandSender.writeData(
+      FrameBuilder.buildSendTracePath(
+        nonce: nonce,
+        prefixSize: prefixSize,
+        contactPublicKey: contactPublicKey,
       ),
     );
   }

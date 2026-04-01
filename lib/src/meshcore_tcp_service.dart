@@ -152,6 +152,8 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
         onAllowedRepeatFreqReceived?.call(ranges);
     _responseHandler.onAutoaddConfigReceived = (config) =>
         onAutoaddConfigReceived?.call(config);
+    _responseHandler.onTraceDataReceived = (nonce, hopCount, snrThere, snrBack) =>
+        onTraceDataReceived?.call(nonce, hopCount, snrThere, snrBack);
     _responseHandler.onRawDataReceived = (payload, snr, rssi) =>
         onRawDataReceived?.call(payload, snr, rssi);
     _responseHandler.onChannelDataReceived =
@@ -579,6 +581,19 @@ class MeshCoreTcpService extends MeshCoreServiceBase {
     FrameBuilder.buildSendBinaryReq(
       contactPublicKey: contactPublicKey,
       requestData: requestData,
+    ),
+  );
+
+  @override
+  Future<void> sendTracePath({
+    required int nonce,
+    int prefixSize = 1,
+    required Uint8List contactPublicKey,
+  }) => _commandSender.writeData(
+    FrameBuilder.buildSendTracePath(
+      nonce: nonce,
+      prefixSize: prefixSize,
+      contactPublicKey: contactPublicKey,
     ),
   );
 

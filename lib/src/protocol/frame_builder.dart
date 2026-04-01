@@ -396,6 +396,32 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build SendTracePath command (ping) — sends a trace/ping to a contact.
+  ///
+  /// [nonce] random 32-bit value used to correlate the response.
+  /// [prefixSize] number of public key bytes to send (1, 2, 4, or 8).
+  ///   Determines hop type: 1→0 (zero-hop), 2→1, 4→2, 8→3.
+  /// [contactPublicKey] full public key (first [prefixSize] bytes are sent).
+  static Uint8List buildSendTracePath({
+    required int nonce,
+    int prefixSize = 1,
+    required Uint8List contactPublicKey,
+  }) {
+    // Map prefix size → hop type
+    // 1 byte → 0 (zero-hop), 2 → 1, 4 → 2, 8 → 3
+    const prefixToHop = {1: 0, 2: 1, 4: 2, 8: 3};
+    final hopType = prefixToHop[prefixSize] ?? 0;
+    final keyLen = (prefixToHop.containsKey(prefixSize) ? prefixSize : 1)
+        .clamp(1, contactPublicKey.length);
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSendTracePath); // 36
+    writer.writeUInt32LE(nonce);
+    writer.writeUInt32LE(0); // reserved
+    writer.writeByte(hopType);
+    writer.writeBytes(contactPublicKey.sublist(0, keyLen));
+    return writer.toBytes();
+  }
+
   /// Build ResetPath command - clears learned path for a contact
   static Uint8List buildResetPath(Uint8List contactPublicKey) {
     final writer = BufferWriter();

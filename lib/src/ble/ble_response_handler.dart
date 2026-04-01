@@ -77,6 +77,8 @@ typedef OnAllowedRepeatFreqCallback =
 typedef OnControlDataCallback =
     void Function(Uint8List payload, int snrRaw, int rssiDbm, int pathLen);
 typedef OnAutoaddConfigCallback = void Function(Map<String, dynamic> config);
+typedef OnTraceDataCallback =
+    void Function(int nonce, int hopCount, double snrThere, double snrBack);
 
 /// Processes incoming responses from the BLE device
 class BleResponseHandler {
@@ -122,6 +124,7 @@ class BleResponseHandler {
   OnAllowedRepeatFreqCallback? onAllowedRepeatFreqReceived;
   OnControlDataCallback? onControlDataReceived;
   OnAutoaddConfigCallback? onAutoaddConfigReceived;
+  OnTraceDataCallback? onTraceDataReceived;
   VoidCallback? onRxActivity;
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
@@ -325,6 +328,10 @@ class BleResponseHandler {
           debugPrint('  → Response: No More Messages');
           onNoMoreMessages?.call();
           break;
+        case MeshCoreConstants.pushTraceData:
+          debugPrint('  → Handling TraceData push');
+          _handleTraceData(reader);
+          break;
         case MeshCoreConstants.pushPathDiscoveryResponse:
           debugPrint('  → Path discovery response (not yet handled)');
           break;
@@ -363,6 +370,21 @@ class BleResponseHandler {
       debugPrint('  Stack trace: $stackTrace');
       onError?.call('Data parsing error: $e');
     }
+  }
+
+  /// Handle TraceData push (pushTraceData = 0x89)
+  void _handleTraceData(BufferReader reader) {
+    final result = FrameParser.parseTraceData(reader);
+    final nonce = result['nonce'] as int;
+    final hopCount = result['hopCount'] as int;
+    final snrThere = result['snrThere'] as double;
+    final snrBack = result['snrBack'] as double;
+    debugPrint(
+      '  📡 [TraceData] nonce=$nonce, hops=$hopCount, '
+      'SNR there=${snrThere.toStringAsFixed(1)} dB, '
+      'SNR back=${snrBack.toStringAsFixed(1)} dB',
+    );
+    onTraceDataReceived?.call(nonce, hopCount, snrThere, snrBack);
   }
 
   /// Handle RawData push (pushRawData = 0x84)

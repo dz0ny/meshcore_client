@@ -242,6 +242,48 @@ class FrameParser {
     return (potentialSender, decodedBody);
   }
 
+  /// Parse TraceData push (pushTraceData = 0x89)
+  ///
+  /// Firmware format:
+  /// [reserved:1][pathLen:1][flags:1][tag:uint32][auth:uint32]
+  /// [pathHashes: pathLen bytes]
+  /// [pathSnrs: hopCount int8 values]  (hopCount = pathLen >> pathSz)
+  /// [finalSnr: int8]  (SNR * 4 of the return packet)
+  static Map<String, dynamic> parseTraceData(BufferReader reader) {
+    reader.readByte(); // reserved
+    final pathLen = reader.readByte();
+    final flags = reader.readByte();
+    final pathSz = flags & 0x03;
+    final nonce = reader.readUInt32LE(); // tag
+    reader.readUInt32LE(); // auth_code
+
+    final hopCount = pathSz == 0 ? pathLen : pathLen >> pathSz;
+
+    // Path hashes
+    final pathBytes =
+        pathLen > 0 && reader.remainingBytesCount >= pathLen
+            ? reader.readBytes(pathLen)
+            : Uint8List(0);
+
+    // Per-hop SNR values: one signed int8 per hop, value = SNR * 4
+    final snrValues = <int>[];
+    for (var i = 0; i < hopCount && reader.remainingBytesCount > 0; i++) {
+      snrValues.add(reader.readInt8());
+    }
+
+    // Final SNR (return path to us) — signed int8, value = SNR * 4
+    final finalSnr = reader.remainingBytesCount >= 1 ? reader.readInt8() : 0;
+
+    return {
+      'hopCount': hopCount,
+      'flags': flags,
+      'nonce': nonce,
+      'pathBytes': pathBytes,
+      'snrThere': snrValues.isNotEmpty ? snrValues[0] / 4.0 : 0.0,
+      'snrBack': finalSnr / 4.0,
+    };
+  }
+
   /// Parse TelemetryResponse push
   static Map<String, dynamic> parseTelemetryResponse(BufferReader reader) {
     reader.readByte(); // reserved

@@ -35,4 +35,4 @@ export 'src/meshcore_serial_service.dart';
 
 // BLE layer callback types (needed for onRawDataReceived wiring)
 export 'src/ble/ble_response_handler.dart'
-    show OnChannelDataReceivedCallback, OnRawDataReceivedCallback;
+    show OnChannelDataReceivedCallback, OnRawDataReceivedCallback, OnTraceDataCallback;

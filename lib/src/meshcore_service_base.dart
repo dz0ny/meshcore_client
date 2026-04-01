@@ -45,6 +45,7 @@ abstract class MeshCoreServiceBase {
   OnChannelDataReceivedCallback? onChannelDataReceived;
   OnControlDataCallback? onControlDataReceived;
   OnAutoaddConfigCallback? onAutoaddConfigReceived;
+  OnTraceDataCallback? onTraceDataReceived;
   VoidCallback? onRxActivity;
   VoidCallback? onTxActivity;
   OnReconnectionAttemptCallback? onReconnectionAttempt;
@@ -128,6 +129,16 @@ abstract class MeshCoreServiceBase {
   Future<void> clearFloodScope();
 
   Future<void> sendControlData(Uint8List payload);
+
+  /// Send trace path (ping) to a contact.
+  /// [nonce] is a random 32-bit value to correlate the response.
+  /// [prefixSize] number of public key bytes to send (1=zero-hop, 2, 4, 8).
+  /// [contactPublicKey] the contact's full public key.
+  Future<void> sendTracePath({
+    required int nonce,
+    int prefixSize = 1,
+    required Uint8List contactPublicKey,
+  });
 
   Future<void> syncNextMessage();
   Future<void> getDeviceTime();

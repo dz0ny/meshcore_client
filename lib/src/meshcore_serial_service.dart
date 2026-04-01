@@ -85,6 +85,8 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
         onAllowedRepeatFreqReceived?.call(r);
     _responseHandler.onAutoaddConfigReceived = (c) =>
         onAutoaddConfigReceived?.call(c);
+    _responseHandler.onTraceDataReceived = (nonce, hopCount, snrThere, snrBack) =>
+        onTraceDataReceived?.call(nonce, hopCount, snrThere, snrBack);
     _responseHandler.onRawDataReceived = (p, s, r) =>
         onRawDataReceived?.call(p, s, r);
     _responseHandler.onChannelDataReceived =
@@ -321,6 +323,19 @@ class MeshCoreSerialService extends MeshCoreServiceBase {
     FrameBuilder.buildSendBinaryReq(
       contactPublicKey: contactPublicKey,
       requestData: requestData,
+    ),
+  );
+
+  @override
+  Future<void> sendTracePath({
+    required int nonce,
+    int prefixSize = 1,
+    required Uint8List contactPublicKey,
+  }) => _commandSender.writeData(
+    FrameBuilder.buildSendTracePath(
+      nonce: nonce,
+      prefixSize: prefixSize,
+      contactPublicKey: contactPublicKey,
     ),
   );
 
