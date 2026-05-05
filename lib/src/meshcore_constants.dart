@@ -65,7 +65,7 @@ class MeshCoreConstants {
   static const int cmdGetAutoaddConfig = 59;
   static const int cmdGetAllowedRepeatFreq = 60;
   static const int cmdSetPathHashMode = 61;
-  static const int cmdScanSpectrum = 62;
+  static const int cmdSendChannelData = 62;
 
   // Response Codes (Device -> App)
   static const int respOk = 0;
@@ -97,7 +97,7 @@ class MeshCoreConstants {
   static const int respStats = 24; // v8+
   static const int respAutoaddConfig = 25;
   static const int respAllowedRepeatFreq = 26;
-  static const int respSpectrumScan = 27;
+  static const int respChannelDataRecv = 27;
 
   // Push Codes (Device -> App, unsolicited)
   static const int pushAdvert = 0x80;
@@ -153,6 +153,10 @@ class MeshCoreConstants {
   static const int binaryReqGetAvgMinMax = 0x04;
   static const int binaryReqGetAccessList = 0x05;
   static const int binaryReqGetNeighbours = 0x06;
+
+  // Channel datagram payload types
+  static const int dataTypeDev = 0xFFFF;
+  static const int maxChannelDataLength = 163;
 
   // Default Public Channel Secret (128-bit)
   // This is the well-known pre-shared key for the public channel (channel 0)

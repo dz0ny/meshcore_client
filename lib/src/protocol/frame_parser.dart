@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import '../models/contact.dart';
 import '../models/message.dart';
-import '../models/spectrum_scan.dart';
 import '../buffer_reader.dart';
 import '../helpers/smaz.dart';
 import '../meshcore_constants.dart';
@@ -127,8 +126,7 @@ class FrameParser {
       // Signed message format: [4-byte room post author prefix][UTF-8 text]
       // The author prefix identifies who originally posted in a room.
       if (reader.remainingBytesCount >= 4) {
-        roomPostAuthorPrefix =
-            Uint8List.fromList(reader.readBytes(4));
+        roomPostAuthorPrefix = Uint8List.fromList(reader.readBytes(4));
         text = reader.hasRemaining ? reader.readString() : '';
       } else {
         text = reader.readString();
@@ -244,6 +242,48 @@ class FrameParser {
     return (potentialSender, decodedBody);
   }
 
+  /// Parse TraceData push (pushTraceData = 0x89)
+  ///
+  /// Firmware format:
+  /// [reserved:1][pathLen:1][flags:1][tag:uint32][auth:uint32]
+  /// [pathHashes: pathLen bytes]
+  /// [pathSnrs: hopCount int8 values]  (hopCount = pathLen >> pathSz)
+  /// [finalSnr: int8]  (SNR * 4 of the return packet)
+  static Map<String, dynamic> parseTraceData(BufferReader reader) {
+    reader.readByte(); // reserved
+    final pathLen = reader.readByte();
+    final flags = reader.readByte();
+    final pathSz = flags & 0x03;
+    final nonce = reader.readUInt32LE(); // tag
+    reader.readUInt32LE(); // auth_code
+
+    final hopCount = pathSz == 0 ? pathLen : pathLen >> pathSz;
+
+    // Path hashes
+    final pathBytes =
+        pathLen > 0 && reader.remainingBytesCount >= pathLen
+            ? reader.readBytes(pathLen)
+            : Uint8List(0);
+
+    // Per-hop SNR values: one signed int8 per hop, value = SNR * 4
+    final snrValues = <int>[];
+    for (var i = 0; i < hopCount && reader.remainingBytesCount > 0; i++) {
+      snrValues.add(reader.readInt8());
+    }
+
+    // Final SNR (return path to us) — signed int8, value = SNR * 4
+    final finalSnr = reader.remainingBytesCount >= 1 ? reader.readInt8() : 0;
+
+    return {
+      'hopCount': hopCount,
+      'flags': flags,
+      'nonce': nonce,
+      'pathBytes': pathBytes,
+      'snrThere': snrValues.isNotEmpty ? snrValues[0] / 4.0 : 0.0,
+      'snrBack': finalSnr / 4.0,
+    };
+  }
+
   /// Parse TelemetryResponse push
   static Map<String, dynamic> parseTelemetryResponse(BufferReader reader) {
     reader.readByte(); // reserved
@@ -318,18 +358,6 @@ class FrameParser {
       pathHashMode = reader.readByte();
     }
 
-    bool? supportsSpectrumScan;
-    if (reader.hasRemaining) {
-      supportsSpectrumScan = reader.readByte() != 0;
-    }
-
-    int? spectrumScanMinKhz;
-    int? spectrumScanMaxKhz;
-    if (reader.remainingBytesCount >= 8) {
-      spectrumScanMinKhz = reader.readUInt32LE();
-      spectrumScanMaxKhz = reader.readUInt32LE();
-    }
-
     return {
       'firmwareVersion': firmwareVersion,
       'maxContacts': maxContacts,
@@ -340,9 +368,6 @@ class FrameParser {
       'semanticVersion': semanticVersion,
       'clientRepeat': clientRepeat,
       'pathHashMode': pathHashMode,
-      'supportsSpectrumScan': supportsSpectrumScan,
-      'spectrumScanMinKhz': spectrumScanMinKhz,
-      'spectrumScanMaxKhz': spectrumScanMaxKhz,
     };
   }
 
@@ -358,29 +383,6 @@ class FrameParser {
       ranges.add((lower: lower, upper: upper));
     }
     return ranges;
-  }
-
-  static SpectrumScanResult parseSpectrumScan(BufferReader reader) {
-    final count = reader.hasRemaining ? reader.readByte() : 0;
-    final candidates = <SpectrumScanCandidate>[];
-
-    for (var i = 0; i < count && reader.remainingBytesCount >= 8; i++) {
-      final centerFrequencyKhz = reader.readUInt32LE();
-      final occupancyPercent = reader.readByte();
-      final peakRssiDbm = reader.readInt8();
-      final avgRssiDbm = reader.readInt8();
-      reader.readByte();
-      candidates.add(
-        SpectrumScanCandidate(
-          centerFrequencyKhz: centerFrequencyKhz,
-          occupancyPercent: occupancyPercent,
-          peakRssiDbm: peakRssiDbm,
-          avgRssiDbm: avgRssiDbm,
-        ),
-      );
-    }
-
-    return SpectrumScanResult(candidates: candidates);
   }
 
   /// Parse SelfInfo response

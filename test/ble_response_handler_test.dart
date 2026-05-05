@@ -368,6 +368,48 @@ void main() {
         expect(queue.pendingResponseCount, 0);
       },
     );
+
+    test('emits received channel datagrams with metadata', () {
+      final handler = BleResponseHandler();
+      late int seenChannelIdx;
+      late int seenPathLen;
+      late int seenDataType;
+      late Uint8List seenPayload;
+      late int seenSnrRaw;
+      int? seenRssiDbm;
+
+      handler.onChannelDataReceived =
+          (channelIdx, pathLen, dataType, payload, snrRaw, rssiDbm) {
+            seenChannelIdx = channelIdx;
+            seenPathLen = pathLen;
+            seenDataType = dataType;
+            seenPayload = payload;
+            seenSnrRaw = snrRaw;
+            seenRssiDbm = rssiDbm;
+          };
+
+      handler.feedData([
+        MeshCoreConstants.respChannelDataRecv,
+        0x10,
+        0x00,
+        0x00,
+        0x02,
+        0xFF,
+        0xFF,
+        0xFF,
+        0x03,
+        0x47,
+        0x01,
+        0x02,
+      ]);
+
+      expect(seenChannelIdx, 2);
+      expect(seenPathLen, 0xFF);
+      expect(seenDataType, MeshCoreConstants.dataTypeDev);
+      expect(seenPayload, orderedEquals([0x47, 0x01, 0x02]));
+      expect(seenSnrRaw, 0x10);
+      expect(seenRssiDbm, isNull);
+    });
   });
 }
 

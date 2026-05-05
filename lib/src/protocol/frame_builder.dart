@@ -255,22 +255,16 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
-  static Uint8List buildScanSpectrum({
-    required int startFrequencyKhz,
-    required int stopFrequencyKhz,
-    required int bandwidthKhz,
-    required int stepKhz,
-    required int dwellMs,
-    required int thresholdDb,
+  static Uint8List buildSendChannelData({
+    required int channelIdx,
+    required int dataType,
+    required Uint8List payload,
   }) {
     final writer = BufferWriter();
-    writer.writeByte(MeshCoreConstants.cmdScanSpectrum);
-    writer.writeUInt32LE(startFrequencyKhz);
-    writer.writeUInt32LE(stopFrequencyKhz);
-    writer.writeUInt32LE(bandwidthKhz);
-    writer.writeUInt32LE(stepKhz);
-    writer.writeUInt16LE(dwellMs);
-    writer.writeByte(thresholdDb);
+    writer.writeByte(MeshCoreConstants.cmdSendChannelData);
+    writer.writeUInt16LE(dataType);
+    writer.writeByte(channelIdx);
+    writer.writeBytes(payload);
     return writer.toBytes();
   }
 
@@ -366,11 +360,65 @@ class FrameBuilder {
     return writer.toBytes();
   }
 
+  /// Build SetFloodScope command (firmware v8+)
+  ///
+  /// Sets the transport scope key used for all subsequent flood sends.
+  /// [scopeKey] must be exactly 16 bytes (SHA256(region_name)[0:16]).
+  /// Repeaters only forward packets whose scope matches their allowed regions.
+  static Uint8List buildSetFloodScope(Uint8List scopeKey) {
+    if (scopeKey.length != 16) {
+      throw ArgumentError(
+        'Flood scope key must be exactly 16 bytes (got ${scopeKey.length})',
+      );
+    }
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSetFloodScope); // 54
+    writer.writeByte(0); // sub-command (always 0)
+    writer.writeBytes(scopeKey);
+    return writer.toBytes();
+  }
+
+  /// Build ClearFloodScope command (firmware v8+)
+  ///
+  /// Clears the transport scope so subsequent flood sends are unscoped.
+  static Uint8List buildClearFloodScope() {
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSetFloodScope); // 54
+    writer.writeByte(0); // sub-command (always 0)
+    return writer.toBytes();
+  }
+
   /// Build SendControlData command (firmware v8+)
   static Uint8List buildSendControlData(Uint8List payload) {
     final writer = BufferWriter();
     writer.writeByte(MeshCoreConstants.cmdSendControlData);
     writer.writeBytes(payload);
+    return writer.toBytes();
+  }
+
+  /// Build SendTracePath command (ping) — sends a trace/ping to a contact.
+  ///
+  /// [nonce] random 32-bit value used to correlate the response.
+  /// [prefixSize] number of public key bytes to send (1, 2, 4, or 8).
+  ///   Determines hop type: 1→0 (zero-hop), 2→1, 4→2, 8→3.
+  /// [contactPublicKey] full public key (first [prefixSize] bytes are sent).
+  static Uint8List buildSendTracePath({
+    required int nonce,
+    int prefixSize = 1,
+    required Uint8List contactPublicKey,
+  }) {
+    // Map prefix size → hop type
+    // 1 byte → 0 (zero-hop), 2 → 1, 4 → 2, 8 → 3
+    const prefixToHop = {1: 0, 2: 1, 4: 2, 8: 3};
+    final hopType = prefixToHop[prefixSize] ?? 0;
+    final keyLen = (prefixToHop.containsKey(prefixSize) ? prefixSize : 1)
+        .clamp(1, contactPublicKey.length);
+    final writer = BufferWriter();
+    writer.writeByte(MeshCoreConstants.cmdSendTracePath); // 36
+    writer.writeUInt32LE(nonce);
+    writer.writeUInt32LE(0); // reserved
+    writer.writeByte(hopType);
+    writer.writeBytes(contactPublicKey.sublist(0, keyLen));
     return writer.toBytes();
   }
 

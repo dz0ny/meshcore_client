@@ -9,7 +9,6 @@ import '../models/contact.dart';
 import '../models/message.dart';
 import '../models/ble_packet_log.dart';
 import '../models/sent_message_tracker.dart';
-import '../models/spectrum_scan.dart';
 import '../buffer_reader.dart';
 import '../meshcore_constants.dart';
 import '../meshcore_opcode_names.dart';
@@ -64,11 +63,22 @@ typedef OnMessageEchoDetectedCallback =
     void Function(String messageId, int echoCount, int snrRaw, int rssiDbm);
 typedef OnRawDataReceivedCallback =
     void Function(Uint8List payload, int snrRaw, int rssiDbm);
+typedef OnChannelDataReceivedCallback =
+    void Function(
+      int channelIdx,
+      int pathLen,
+      int dataType,
+      Uint8List payload,
+      int snrRaw,
+      int? rssiDbm,
+    );
 typedef OnAllowedRepeatFreqCallback =
     void Function(List<({int lower, int upper})> ranges);
 typedef OnControlDataCallback =
     void Function(Uint8List payload, int snrRaw, int rssiDbm, int pathLen);
 typedef OnAutoaddConfigCallback = void Function(Map<String, dynamic> config);
+typedef OnTraceDataCallback =
+    void Function(int nonce, int hopCount, double snrThere, double snrBack);
 
 /// Processes incoming responses from the BLE device
 class BleResponseHandler {
@@ -110,9 +120,11 @@ class BleResponseHandler {
   OnChannelInfoCallback? onChannelInfoReceived;
   OnMessageEchoDetectedCallback? onMessageEchoDetected;
   OnRawDataReceivedCallback? onRawDataReceived;
+  OnChannelDataReceivedCallback? onChannelDataReceived;
   OnAllowedRepeatFreqCallback? onAllowedRepeatFreqReceived;
   OnControlDataCallback? onControlDataReceived;
   OnAutoaddConfigCallback? onAutoaddConfigReceived;
+  OnTraceDataCallback? onTraceDataReceived;
   VoidCallback? onRxActivity;
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
@@ -308,13 +320,17 @@ class BleResponseHandler {
           debugPrint('  → Handling AutoaddConfig');
           _handleAutoaddConfig(reader);
           break;
-        case MeshCoreConstants.respSpectrumScan:
-          debugPrint('  → Handling SpectrumScan');
-          _handleSpectrumScan(reader);
+        case MeshCoreConstants.respChannelDataRecv:
+          debugPrint('  → Handling ChannelDataRecv');
+          _handleChannelDataRecv(reader);
           break;
         case MeshCoreConstants.respNoMoreMessages:
           debugPrint('  → Response: No More Messages');
           onNoMoreMessages?.call();
+          break;
+        case MeshCoreConstants.pushTraceData:
+          debugPrint('  → Handling TraceData push');
+          _handleTraceData(reader);
           break;
         case MeshCoreConstants.pushPathDiscoveryResponse:
           debugPrint('  → Path discovery response (not yet handled)');
@@ -356,6 +372,21 @@ class BleResponseHandler {
     }
   }
 
+  /// Handle TraceData push (pushTraceData = 0x89)
+  void _handleTraceData(BufferReader reader) {
+    final result = FrameParser.parseTraceData(reader);
+    final nonce = result['nonce'] as int;
+    final hopCount = result['hopCount'] as int;
+    final snrThere = result['snrThere'] as double;
+    final snrBack = result['snrBack'] as double;
+    debugPrint(
+      '  📡 [TraceData] nonce=$nonce, hops=$hopCount, '
+      'SNR there=${snrThere.toStringAsFixed(1)} dB, '
+      'SNR back=${snrBack.toStringAsFixed(1)} dB',
+    );
+    onTraceDataReceived?.call(nonce, hopCount, snrThere, snrBack);
+  }
+
   /// Handle RawData push (pushRawData = 0x84)
   /// Format: [snr:int8][rssi:int8][0xFF reserved][raw_payload...]
   void _handleRawData(BufferReader reader) {
@@ -382,6 +413,33 @@ class BleResponseHandler {
       '  🛰️ [ControlData] ${payload.length} bytes, SNR=$snrRaw, RSSI=$rssiDbm, pathLen=$pathLen',
     );
     onControlDataReceived?.call(payload, snrRaw, rssiDbm, pathLen);
+  }
+
+  /// Handle channel datagram receive response (respChannelDataRecv = 27).
+  void _handleChannelDataRecv(BufferReader reader) {
+    if (reader.remainingBytesCount < 8) return;
+    final snrRaw = reader.readInt8();
+    reader.readByte(); // reserved1
+    final reserved2 = reader
+        .readByte(); // reserved2; firmware currently sends 0
+    final channelIdx = reader.readByte();
+    final pathLen = reader.readByte();
+    final dataType = reader.readUInt16LE();
+    final dataLen = reader.readByte();
+    if (reader.remainingBytesCount < dataLen) return;
+    final payload = reader.readBytes(dataLen);
+    final rssiDbm = reserved2 == 0 ? null : reserved2;
+    debugPrint(
+      '  📦 [ChannelData] channel=$channelIdx type=0x${dataType.toRadixString(16).padLeft(4, '0')} len=$dataLen pathLen=$pathLen SNR=$snrRaw',
+    );
+    onChannelDataReceived?.call(
+      channelIdx,
+      pathLen,
+      dataType,
+      payload,
+      snrRaw,
+      rssiDbm,
+    );
   }
 
   /// Handle ContactsStart response
@@ -1754,23 +1812,6 @@ class BleResponseHandler {
       onError?.call('AutoaddConfig parsing error: $e');
       _commandQueue?.completeCurrentCommandWithError(
         'AutoaddConfig parsing error: $e',
-      );
-    }
-  }
-
-  void _handleSpectrumScan(BufferReader reader) {
-    try {
-      final result = FrameParser.parseSpectrumScan(reader);
-      debugPrint('  ✅ [SpectrumScan] ${result.candidates.length} candidate(s)');
-      _commandQueue?.completeCommand<SpectrumScanResult>(
-        MeshCoreConstants.respSpectrumScan,
-        result,
-      );
-    } catch (e) {
-      debugPrint('  ❌ [SpectrumScan] Parsing error: $e');
-      onError?.call('SpectrumScan parsing error: $e');
-      _commandQueue?.completeCurrentCommandWithError(
-        'SpectrumScan parsing error: $e',
       );
     }
   }

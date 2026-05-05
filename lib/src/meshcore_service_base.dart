@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'models/contact.dart';
 import 'models/ble_packet_log.dart';
-import 'models/spectrum_scan.dart';
 import 'ble/ble_response_handler.dart';
 import 'ble/ble_connection_manager.dart'
     show
@@ -43,8 +42,10 @@ abstract class MeshCoreServiceBase {
   void Function(Uint8List publicKey)? onContactDeleted;
   VoidCallback? onContactsFull;
   OnRawDataReceivedCallback? onRawDataReceived;
+  OnChannelDataReceivedCallback? onChannelDataReceived;
   OnControlDataCallback? onControlDataReceived;
   OnAutoaddConfigCallback? onAutoaddConfigReceived;
+  OnTraceDataCallback? onTraceDataReceived;
   VoidCallback? onRxActivity;
   VoidCallback? onTxActivity;
   OnReconnectionAttemptCallback? onReconnectionAttempt;
@@ -59,8 +60,6 @@ abstract class MeshCoreServiceBase {
   int get rxPacketCount;
   int get txPacketCount;
   List<BlePacketLog> get packetLogs;
-  bool get isSpectrumScanActive;
-
   // ── Commands ───────────────────────────────────────────────────────────────
 
   Future<void> getContacts();
@@ -89,6 +88,7 @@ abstract class MeshCoreServiceBase {
     required int channelIdx,
     required String text,
     int textType = 0,
+    Uint8List? floodScopeKey,
   });
 
   void trackSentChannelMessage(
@@ -103,6 +103,13 @@ abstract class MeshCoreServiceBase {
     required Uint8List payload,
   });
 
+  Future<void> sendChannelData({
+    required int channelIdx,
+    required int dataType,
+    required Uint8List payload,
+    Uint8List? floodScopeKey,
+  });
+
   Future<void> requestTelemetry(
     Uint8List contactPublicKey, {
     bool zeroHop = false,
@@ -113,7 +120,25 @@ abstract class MeshCoreServiceBase {
     required Uint8List requestData,
   });
 
+  /// Set the flood scope transport key (firmware v8+).
+  /// All subsequent flood sends will be tagged with this scope.
+  Future<void> setFloodScope(Uint8List scopeKey);
+
+  /// Clear the flood scope (firmware v8+).
+  /// Subsequent flood sends will be unscoped.
+  Future<void> clearFloodScope();
+
   Future<void> sendControlData(Uint8List payload);
+
+  /// Send trace path (ping) to a contact.
+  /// [nonce] is a random 32-bit value to correlate the response.
+  /// [prefixSize] number of public key bytes to send (1=zero-hop, 2, 4, 8).
+  /// [contactPublicKey] the contact's full public key.
+  Future<void> sendTracePath({
+    required int nonce,
+    int prefixSize = 1,
+    required Uint8List contactPublicKey,
+  });
 
   Future<void> syncNextMessage();
   Future<void> getDeviceTime();
@@ -134,14 +159,6 @@ abstract class MeshCoreServiceBase {
   });
 
   Future<void> getAllowedRepeatFreq();
-  Future<SpectrumScanResult> scanSpectrum({
-    required int startFrequencyKhz,
-    required int stopFrequencyKhz,
-    required int bandwidthKhz,
-    required int stepKhz,
-    required int dwellMs,
-    required int thresholdDb,
-  });
   Future<void> setTxPower(int powerDbm);
   Future<void> setOtherParams({
     required int manualAddContacts,
@@ -187,7 +204,6 @@ abstract class MeshCoreServiceBase {
 
   void clearPacketLogs();
   void resetCounters();
-  void setSpectrumScanActive(bool active);
 
   void dispose();
 }
